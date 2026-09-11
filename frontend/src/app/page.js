@@ -6,7 +6,7 @@ export default function Home() {
   const [message, setMessage] = useState('Loading...');
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/hello')
+    fetch('https://hackathon-backend-qp6d.onrender.com/api/hello')
       .then((res) => res.json())
       .then((data) => setMessage(data.message))
       .catch((err) => setMessage('Error: ' + err.message));
