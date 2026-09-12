@@ -267,11 +267,17 @@ async function runPipeline(jd, candidates, opts = {}) {
   for (const c of candidateResults) {
     const norm = span < 1e-9 ? 0.5 : (c._rawScore - rMin) / span;
     c.finalScore = Math.round((cfg.scoreMin + norm * (cfg.scoreMax - cfg.scoreMin)) * 10) / 10;
-    delete c._rawScore;
   }
 
-  candidateResults.sort((a, b) => b.finalScore - a.finalScore);
-  candidateResults.forEach((c, i) => { c.rank = i + 1; });
+  // Sort on FULL PRECISION, not the rounded display score.
+  //
+  // finalScore is rounded to 1dp, and across 220 candidates that produced 40
+  // shared values with one tie group 8 deep. Sorting on the rounded number left
+  // those ranks decided by array order — i.e. by filename. Rank now follows the
+  // actual score; rounding is display only. Remaining exact ties fall back to
+  // name so the order is at least deterministic across runs.
+  candidateResults.sort((a, b) => (b._rawScore - a._rawScore) || a.name.localeCompare(b.name));
+  candidateResults.forEach((c, i) => { c.rank = i + 1; delete c._rawScore; });
 
   // --- "Why not #1?" — for each non-top candidate, find the requirement
   //     where they trail the top by the most. Gap is on the 0..1 fused scale.
