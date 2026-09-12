@@ -32,6 +32,8 @@ const jdFixture = require(path.join(__dirname, '..', 'engine', 'fixtures', 'jd.f
 const { loadFromDir } = require('../engine/parse/loadCandidates');
 const { runPipeline } = require('../engine/match/score');
 const { explainTop } = require('../engine/explain/explain');
+const { flagBias } = require('../engine/explain/bias');
+const { chat } = require('../engine/explain/chat');
 const { runAblation } = require('../engine/match/ablate');
 const cfg = require('../engine/match/config');
 
@@ -107,7 +109,7 @@ function _shapeResult(jd, ranked, mode, candidates) {
     jd,
     candidates: ranked,
     mode,
-    biasFlags: [],
+    biasFlags: flagBias(jd.rawText),
     meta: {
       generatedAt: new Date().toISOString(),
       poolSize: ranked.length,
@@ -302,6 +304,35 @@ router.post('/reset-cache', (req, res) => {
   _rankCache.clear();
   _ablationCache.clear();
   res.json({ ok: true });
+});
+
+/**
+ * POST /api/chat  { question, pipelineResult? }
+ *
+ * Extractive only — quotes resume lines, never generates prose about them.
+ * If the client does not send a pipelineResult we compute the default ranking,
+ * so the endpoint works standalone.
+ */
+router.post('/chat', async (req, res) => {
+  try {
+    const { question } = req.body || {};
+    if (!question || !String(question).trim()) {
+      return res.status(400).json({ error: 'question is required' });
+    }
+
+    const candidates = await _getCandidates();
+    let pipelineResult = req.body && req.body.pipelineResult;
+    if (!pipelineResult || !pipelineResult.candidates) {
+      const jd = _resolveJd(req.body || {});
+      const ranked = await runPipeline(jd, candidates, { alpha: cfg.alpha, mode: 'hybrid' });
+      pipelineResult = _shapeResult(jd, ranked, 'hybrid', candidates);
+    }
+
+    const answer = await chat(String(question), pipelineResult, candidates);
+    res.json(answer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

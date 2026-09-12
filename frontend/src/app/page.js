@@ -219,17 +219,48 @@ export default function Home() {
                   ))}
                 </ul>
 
-                {selected.explanation.missing.length > 0 && (
+                {/* `missing` carries unsatisfied NICE-to-haves as well, and
+                    listing those under "Missing must-haves" overstates the gap.
+                    Split them. */}
+                {selected.explanation.missing.filter((m) => m.kind === 'MUST').length > 0 && (
                   <>
                     <h4 className="mb-2 font-sans text-xs font-semibold uppercase tracking-wider text-danger">
                       Missing must-haves
                     </h4>
+                    <ul className="mb-4 flex flex-col gap-2">
+                      {selected.explanation.missing
+                        .filter((m) => m.kind === 'MUST')
+                        .map((m, i) => (
+                          <li key={i} className="rounded-xl border border-danger/30 p-3">
+                            <span className="font-sans text-sm font-semibold text-danger">
+                              {m.requirementText}
+                            </span>
+                            {/* The candidate stating the gap in their own words is
+                                stronger than our absence of evidence. Surface it. */}
+                            {m.disclaimedBy && (
+                              <p className="mt-1 font-sans text-sm text-muted">
+                                Candidate states this directly: &ldquo;{m.disclaimedBy}&rdquo;
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                    </ul>
+                  </>
+                )}
+
+                {selected.explanation.missing.filter((m) => m.kind === 'NICE').length > 0 && (
+                  <>
+                    <h4 className="mb-2 font-sans text-xs font-semibold uppercase tracking-wider text-muted">
+                      Not evidenced (nice-to-have)
+                    </h4>
                     <ul className="flex flex-col gap-1">
-                      {selected.explanation.missing.map((m, i) => (
-                        <li key={i} className="font-sans text-sm text-danger">
-                          {m.requirementText}
-                        </li>
-                      ))}
+                      {selected.explanation.missing
+                        .filter((m) => m.kind === 'NICE')
+                        .map((m, i) => (
+                          <li key={i} className="font-sans text-sm text-muted">
+                            {m.requirementText}
+                          </li>
+                        ))}
                     </ul>
                   </>
                 )}
@@ -245,34 +276,52 @@ export default function Home() {
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]">
           {ablation && (
             <div>
-              <h3 className="mb-3 font-display text-xl font-semibold">Ablation — does hybrid matter?</h3>
-              <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+              <h3 className="mb-1 font-display text-xl font-semibold">Ablation — does hybrid matter?</h3>
+              <p className="mb-3 font-sans text-sm text-muted">
+                Each column is the same engine with one layer switched off.{' '}
+                <span className="text-foreground">Literal</span> matches only the exact words in the
+                job description; <span className="text-foreground">Keyword</span> adds our synonym
+                dictionary; <span className="text-foreground">Semantic</span> matches on meaning
+                alone. Movement between columns is the proof each layer earns its place.
+              </p>
+              <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
                 <table className="w-full border-collapse text-left font-sans text-sm">
                   <thead className="bg-background text-xs uppercase tracking-wider text-muted">
                     <tr>
                       <th className="px-4 py-3">Name</th>
-                      <th className="px-4 py-3">Keyword</th>
-                      <th className="px-4 py-3">Semantic</th>
-                      <th className="px-4 py-3">Hybrid</th>
-                      <th className="px-4 py-3">Delta</th>
+                      <th className="px-3 py-3" title="Exact job-description wording only">Literal</th>
+                      <th className="px-3 py-3" title="Exact wording plus our synonym dictionary">Keyword</th>
+                      <th className="px-3 py-3" title="Embedding similarity only">Semantic</th>
+                      <th className="px-3 py-3">Hybrid</th>
+                      <th className="px-4 py-3" title="Rank gained from literal-keyword to hybrid">
+                        Literal → Hybrid
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {ablation.candidates.map((c) => (
-                      <tr key={c.name} className="border-t border-border">
-                        <td className="px-4 py-3">{c.name}</td>
-                        <td className="px-4 py-3">{c.lexicalRank}</td>
-                        <td className="px-4 py-3">{c.semanticRank}</td>
-                        <td className="px-4 py-3">{c.hybridRank}</td>
-                        <td
-                          className={`px-4 py-3 font-semibold ${
-                            c.delta > 0 ? 'text-accent' : c.delta < 0 ? 'text-danger' : 'text-muted'
-                          }`}
-                        >
-                          {c.delta > 0 ? `+${c.delta}` : c.delta}
-                        </td>
-                      </tr>
-                    ))}
+                    {ablation.candidates.map((c) => {
+                      // Positive = hybrid ranked them BETTER than literal keyword
+                      // search did. These are the candidates a naive keyword
+                      // search would have buried.
+                      const rescued =
+                        c.litToHybridDelta != null ? c.litToHybridDelta : c.delta;
+                      return (
+                        <tr key={c.name} className="border-t border-border">
+                          <td className="px-4 py-3">{c.name}</td>
+                          <td className="px-3 py-3 text-muted">{c.literalRank ?? '—'}</td>
+                          <td className="px-3 py-3 text-muted">{c.lexicalRank}</td>
+                          <td className="px-3 py-3 text-muted">{c.semanticRank}</td>
+                          <td className="px-3 py-3 font-semibold text-foreground">{c.hybridRank}</td>
+                          <td
+                            className={`px-4 py-3 font-semibold ${
+                              rescued > 0 ? 'text-accent' : rescued < 0 ? 'text-danger' : 'text-muted'
+                            }`}
+                          >
+                            {rescued > 0 ? `+${rescued} rescued` : rescued < 0 ? rescued : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -292,6 +341,9 @@ export default function Home() {
                     <span className="font-sans text-sm font-semibold">&ldquo;{b.phrase}&rdquo;</span>{' '}
                     <span className="font-sans text-xs uppercase tracking-wide text-gold">{b.category}</span>
                     <p className="mt-1 font-sans text-sm text-muted">{b.note}</p>
+                    {b.context && (
+                      <p className="mt-1 font-mono text-xs text-muted/70">{b.context}</p>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -315,7 +367,10 @@ export default function Home() {
                   m.role === 'user' ? 'self-end bg-background' : 'bg-accent-soft'
                 }`}
               >
-                <p>{m.text}</p>
+                {/* Answers are newline-formatted with bullets and quoted resume
+                    lines; without whitespace-pre-line they collapse into one
+                    unreadable paragraph. */}
+                <p className="whitespace-pre-line leading-relaxed">{m.text}</p>
                 {m.citedCandidates && m.citedCandidates.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {m.citedCandidates.map((cid) => {
