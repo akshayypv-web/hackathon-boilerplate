@@ -20,6 +20,9 @@ app.post('/api/echo', (req, res) => {
   res.json({ received: text || 'nothing sent' });
 });
 
+// Matching engine routes (owner D, shipped by B to unblock UI work).
+app.use('/api', require('./routes/rank'));
+
 const { getSupabase, isConfigured } = require('./supabaseClient');
 
 // Test Supabase connection - write
