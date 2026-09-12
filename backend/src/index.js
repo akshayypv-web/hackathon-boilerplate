@@ -20,29 +20,40 @@ app.post('/api/echo', (req, res) => {
   res.json({ received: text || 'nothing sent' });
 });
 
-const supabase = require('./supabaseClient');
+const { getSupabase, isConfigured } = require('./supabaseClient');
 
 // Test Supabase connection - write
 app.post('/api/test-db', async (req, res) => {
-  const { data, error } = await supabase
-    .from('test_items')
-    .insert([{ name: 'Test item from backend' }])
-    .select();
+  try {
+    const { data, error } = await getSupabase()
+      .from('test_items')
+      .insert([{ name: 'Test item from backend' }])
+      .select();
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, data });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(503).json({ error: err.message });
+  }
 });
 
 // Test Supabase connection - read
 app.get('/api/test-db', async (req, res) => {
-  const { data, error } = await supabase
-    .from('test_items')
-    .select('*');
+  try {
+    const { data, error } = await getSupabase()
+      .from('test_items')
+      .select('*');
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true, data });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(503).json({ error: err.message });
+  }
 });
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  if (!isConfigured()) {
+    console.log('Supabase not configured (no backend/.env) - /api/test-db disabled, everything else works.');
+  }
 });
