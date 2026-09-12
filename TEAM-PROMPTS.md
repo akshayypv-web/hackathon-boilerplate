@@ -14,6 +14,7 @@
 **Our boundary, memorise it:**
 - LLM **may** be used to: parse the JD into structured requirements, and phrase a final sentence from facts we already computed.
 - LLM **may never** produce a number that affects rank.
+- **LLM may never touch a resume.** No extraction, no summarisation, no rephrasing of resume content. Resumes flow only through deterministic parsing (pdf-parse + regex + alias dictionary). This is a hard team rule — Person A's pipeline must be 100% rules-based, and no other role may send resume text to an LLM either.
 - Test: *delete every LLM call — does the ranking still compute identically?* For us, yes.
 
 ---
@@ -167,6 +168,10 @@ BUILD THESE FILES:
    - loadFromDir(dirPath) -> Promise<Candidate[]>, sorted by filename, ids cand_01..cand_NN.
 
 CRITICAL CONSTRAINTS:
+- **NO EXTERNAL LLM MAY TOUCH RESUME CONTENT.** Team rule. All extraction is deterministic:
+  pdf-parse -> regex splitting -> alias dictionary. No OpenAI / Anthropic / any hosted model
+  call anywhere in the parsing pipeline, and no such call may be added later "just for messy
+  resumes." If parsing quality is bad, fix the regex and the alias list.
 - The real resumes arrive at 2 PM. I have NOT seen them. Write defensively: never throw,
   always return a usable Candidate even if extraction is poor, log what failed.
 - Every function must be pure and independently testable. No global state.
