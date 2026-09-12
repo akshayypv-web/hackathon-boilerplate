@@ -32,8 +32,15 @@ const MODES = ['hybrid', 'lexical_only', 'semantic_only'];
  * @property {string} id           - "cand_03::ev_012"
  * @property {string} candidateId  - "cand_03"
  * @property {string} text         - original text, as written by the candidate
- * @property {string} normalized   - lowercased, alias-expanded, punctuation-stripped
+ * @property {string} normalized   - lowercased, punctuation-stripped. NO alias expansion.
+ * @property {string} expanded     - normalized PLUS canonical terms implied by aliases
  * @property {string} section      - one of SECTIONS
+ *
+ * On normalized vs expanded — this distinction exists for the ablation demo.
+ * Indexing BM25 on `expanded` lets keyword search find a candidate who wrote
+ * "Express" when the JD says "Node.js". That is good for ranking, but it also
+ * hides the vocabulary-mismatch problem our pitch depends on showing. Keeping
+ * both lets B run literal-keyword and alias-keyword as separate ablation rows.
  */
 
 /**

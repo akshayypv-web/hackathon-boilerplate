@@ -141,3 +141,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Resume PDFs and parsed output - personal data, never commit
+backend/data/
+*.candidates.json
