@@ -30,7 +30,10 @@ const { normalize, expandAliases } = require('./aliases');
  */
 const SECTION_PATTERNS = [
   [/summary|objective|profile|^about|introduction|overview/i, 'other'],
-  [/^(technical\s+|core\s+|key\s+|relevant\s+)?skills?|technolog|competenc|expertise|proficienc|^tools|tech\s+stack/i, 'skills'],
+  // "technolog" is anchored: unanchored it swallows "Bachelor of Technology"
+  // and "B.Sc. Information Technology" as skills HEADINGS, and headings are
+  // never emitted as evidence — so the degree line disappears entirely.
+  [/^(technical\s+|core\s+|key\s+|relevant\s+)?skills?|^technolog|competenc|expertise|proficienc|^tools|tech\s+stack/i, 'skills'],
   [/projects?|portfolio|personal\s+(work|project)|side\s+project|things\s+i\s+(did|built|made)|what\s+i\s+built|builds?/i, 'projects'],
   [/experience|employment|work\s+(history|background)|internships?|professional|career|positions?\s+held|journey|roles?/i, 'experience'],
   [/education|academic|qualification|schooling|coursework|degrees?/i, 'education'],
@@ -53,6 +56,7 @@ function looksLikeHeader(line) {
   if (/\d{4}/.test(t)) return false;                    // "Habit Tracker -- Jan 2023"
   if (!/^[A-Z]/.test(t)) return false;                  // headings start capitalised
   if (LABELLED_CONTENT.test(line)) return false;        // "Languages: Python, SQL"
+  if (DEGREE_LINE.test(t)) return false;                // "Bachelor of Technology"
   return true;
 }
 
@@ -115,6 +119,16 @@ const MAX_LEN = 300;
  */
 const LABELLED_CONTENT = /:\s*\S+(\s+|,)\S+/;
 
+/**
+ * A degree line is content, never a heading.
+ *
+ * "Bachelor of Technology" and "B.Sc. Information Technology" are short, titled
+ * and unpunctuated, so every structural test passes and they get absorbed as
+ * headings — deleting the degree from the evidence entirely, on a JD that has a
+ * degree requirement.
+ */
+const DEGREE_LINE = /\b(b\.?\s?tech|b\.?\s?sc|b\.?\s?e\b|b\.?\s?a\b|m\.?\s?tech|m\.?\s?sc|m\.?\s?a\b|mba|bachelor|master|diploma|ph\.?\s?d)\b/i;
+
 function isSectionHeader(line) {
   const t = line.trim().replace(/[:\s]+$/, '');
   if (!t || t.length > 45) return false;
@@ -122,6 +136,7 @@ function isSectionHeader(line) {
   if (/[.!?,]$/.test(t)) return false;
   if (t.split(/\s+/).length > 5) return false;
   if (LABELLED_CONTENT.test(line)) return false;
+  if (DEGREE_LINE.test(t)) return false;
   for (const [pattern, section] of SECTION_PATTERNS) {
     if (pattern.test(t)) return section;
   }
@@ -164,8 +179,29 @@ function mergeWrappedLines(lines) {
  */
 const NEGATION_START = /^(no|not|none|never|without|lacking|zero)\b|^(no|limited|minimal)\s+(coding|technical|programming|software|development|professional)\b/i;
 
+/**
+ * Negation stated MID-sentence, which the start-anchored rule misses:
+ *
+ *   "(Note: no formal source control tooling used outside of zipping folders)"
+ *
+ * Embeddings match topic, not polarity — "source control tooling" scores as a
+ * strong match for a "version control" requirement no matter what precedes it.
+ * A candidate who explicitly disclaims a skill must not match on it.
+ *
+ * Deliberately narrow: a negation cue must be followed by a capability noun, so
+ * ordinary phrasing like "not only did I ..." does not trip it.
+ */
+const NEGATION_ANYWHERE = new RegExp(
+  '\\b(no|not|never|without|lacking|zero|nil)\\s+' +
+  '(formal\\s+|any\\s+|prior\\s+|professional\\s+|hands[- ]on\\s+|real\\s+|direct\\s+)?' +
+  '(experience|exposure|background|knowledge|training|familiarity|tooling|coding|programming' +
+  '|technical|software|development|source\\s+control|version\\s+control)\\b',
+  'i'
+);
+
 function isNegated(text) {
-  return NEGATION_START.test(text.trim());
+  const t = text.trim();
+  return NEGATION_START.test(t) || NEGATION_ANYWHERE.test(t);
 }
 
 /** One line -> one or more claim strings, depending on section. */
@@ -177,27 +213,25 @@ function splitIntoClaims(line, section) {
     text = text.replace(SKILL_LABEL, '');
 
     // Sentence-split FIRST. A skills section often ends with a prose disclaimer,
-    // and enumerating that sentence is what manufactures false skills.
+    // and enumerating "No coding, web development, or technical background"
+    // is what manufactures phantom skills. A negated sentence is kept whole and
+    // flagged rather than dropped, so the disclaimer stays visible in the parsed
+    // output while scoring skips it.
     return text
       .split(/(?<=[.!?])\s+/)
       .flatMap((sentence) => {
         const s = sentence.trim();
         if (!s) return [];
-        if (isNegated(s)) return [];              // drop the whole negated clause
+        if (isNegated(s)) return [s];             // keep whole, do not enumerate
         return s.split(/[,;|]|\s{2,}|[•▪●○◦‣∙]/);
       })
       .map((s) => s.replace(/[.\s]+$/, '').trim())
-      .filter(Boolean)
-      .filter((s) => !isNegated(s));
+      .filter(Boolean);
   }
 
   // Elsewhere, only split on explicit bullet glyphs. Splitting prose on commas
   // shreds sentences into meaningless fragments.
-  return text
-    .split(BULLET_SPLIT)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .filter((s) => !isNegated(s));
+  return text.split(BULLET_SPLIT).map((s) => s.trim()).filter(Boolean);
 }
 
 /** Contact lines are never matchable signal, only index noise. */
@@ -278,6 +312,7 @@ function toEvidenceUnits(rawText, candidateId) {
         normalized: normalize(text),   // literal, no alias expansion
         expanded: expandAliases(text), // literal + implied canonical terms
         section,
+        negated: isNegated(text),      // candidate is DISCLAIMING this, not claiming it
       });
     }
   }

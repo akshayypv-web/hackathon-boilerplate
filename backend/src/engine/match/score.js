@@ -66,8 +66,18 @@ async function runPipeline(jd, candidates, opts = {}) {
   }
 
   // --- (0a) BM25 over the pooled corpus. One doc = one evidence unit.
-  //         Using .normalized so alias expansion from parse/aliases.js applies.
-  const bm25Docs = allEvidence.map(e => ({ id: e.id, text: e.normalized || e.text }));
+  //
+  // CONTRACT NOTE: evidence units carry TWO text fields.
+  //   .normalized -> literal, cleaned, NO alias expansion
+  //   .expanded   -> normalized PLUS canonical terms implied by aliases
+  // Default to .expanded so "Express" is findable when the JD says "Node.js".
+  // Pass lexicalField:'normalized' for the literal-keyword ablation row, which
+  // is what demonstrates the vocabulary-mismatch problem to judges.
+  const lexicalField = opts.lexicalField || 'expanded';
+  const bm25Docs = allEvidence.map(e => ({
+    id: e.id,
+    text: e[lexicalField] || e.normalized || e.text,
+  }));
   const bm25Index = buildIndex(bm25Docs);
 
   // --- (0b) Embed everything: each requirement text, and each evidence unit.
@@ -111,6 +121,12 @@ async function runPipeline(jd, candidates, opts = {}) {
       const traceSem = opts.trace ? [] : null;
 
       for (const ev of cand.evidence) {
+        // A negated unit DISCLAIMS a capability: "no formal source control
+        // tooling used". Embeddings match topic, not polarity, so such a unit
+        // otherwise scores as a strong match for the very requirement the
+        // candidate is denying. Never let a disclaimer satisfy a requirement.
+        if (ev.negated) continue;
+
         const lex = bm25Score(bm25Index, queryTokens, ev.id);
         if (lex > lexBest) { lexBest = lex; lexBestId = ev.id; }
 
