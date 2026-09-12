@@ -1,0 +1,87 @@
+{
+  "title": "Junior Full Stack Developer Intern",
+  "company": "TechNova Solutions",
+  "rawText": "TechNova Solutions is looking for a Junior Full Stack Developer Intern to join our product team. You will work alongside senior engineers to build and ship features across our web platform.\n\nWhat we're looking for:\n- Solid understanding of JavaScript fundamentals\n- Experience building backend services with Node.js\n- Experience building user interfaces with React\n- Familiarity with databases, either MongoDB or a relational database like PostgreSQL\n- Ability to design and consume REST APIs\n- Comfortable with Git and collaborative version control workflows\n\nNice to have:\n- Exposure to TypeScript\n- Experience deploying applications to a cloud platform\n- Familiarity with writing automated tests\n\nCurrently pursuing a degree in Computer Science or a related field.",
+  "requirements": [
+    {
+      "id": "req_01",
+      "text": "Experience building backend services with Node.js",
+      "kind": "MUST",
+      "category": "skill",
+      "aliases": ["node", "nodejs", "node.js", "express", "expressjs", "nestjs", "fastify", "backend javascript", "server-side javascript"],
+      "weight": 1.2
+    },
+    {
+      "id": "req_02",
+      "text": "Experience building user interfaces with React",
+      "kind": "MUST",
+      "category": "skill",
+      "aliases": ["react", "reactjs", "react.js", "next.js", "nextjs", "jsx", "react hooks", "redux"],
+      "weight": 1.2
+    },
+    {
+      "id": "req_03",
+      "text": "Familiarity with databases such as MongoDB or PostgreSQL",
+      "kind": "MUST",
+      "category": "skill",
+      "aliases": ["mongodb", "mongo", "mongoose", "postgresql", "postgres", "mysql", "sql", "nosql", "database", "supabase", "firebase"],
+      "weight": 1.0
+    },
+    {
+      "id": "req_04",
+      "text": "Ability to design and consume REST APIs",
+      "kind": "MUST",
+      "category": "skill",
+      "aliases": ["rest", "rest api", "restful", "api", "endpoint", "http", "crud", "graphql"],
+      "weight": 1.0
+    },
+    {
+      "id": "req_05",
+      "text": "Comfortable with Git and collaborative version control",
+      "kind": "MUST",
+      "category": "skill",
+      "aliases": ["git", "github", "gitlab", "version control", "pull request", "branching"],
+      "weight": 0.8
+    },
+    {
+      "id": "req_06",
+      "text": "Solid understanding of JavaScript fundamentals",
+      "kind": "MUST",
+      "category": "skill",
+      "aliases": ["javascript", "js", "es6", "ecmascript", "typescript", "async", "promises"],
+      "weight": 1.0
+    },
+    {
+      "id": "req_07",
+      "text": "Exposure to TypeScript",
+      "kind": "NICE",
+      "category": "skill",
+      "aliases": ["typescript", "ts", "typed javascript"],
+      "weight": 0.5
+    },
+    {
+      "id": "req_08",
+      "text": "Experience deploying applications to a cloud platform",
+      "kind": "NICE",
+      "category": "skill",
+      "aliases": ["aws", "azure", "gcp", "vercel", "render", "heroku", "netlify", "docker", "deploy", "ci/cd", "cloud"],
+      "weight": 0.5
+    },
+    {
+      "id": "req_09",
+      "text": "Familiarity with writing automated tests",
+      "kind": "NICE",
+      "category": "skill",
+      "aliases": ["jest", "mocha", "pytest", "unit test", "testing", "test coverage", "cypress", "vitest"],
+      "weight": 0.5
+    },
+    {
+      "id": "req_10",
+      "text": "Currently pursuing a degree in Computer Science or a related field",
+      "kind": "MUST",
+      "category": "education",
+      "aliases": ["computer science", "cse", "information technology", "b.tech", "btech", "bachelor", "engineering"],
+      "weight": 0.6
+    }
+  ]
+}

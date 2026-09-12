@@ -1,0 +1,69 @@
+[
+  {
+    "id": "cand_01",
+    "name": "Aarav Menon",
+    "sourceFile": "fixture_strong_explicit.pdf",
+    "rawText": "(fixture)",
+    "skillsDeclared": ["javascript", "node.js", "react", "mongodb", "git", "typescript"],
+    "_fitLabel": "STRONG — names every required tool explicitly. Should rank top 2 in ALL modes.",
+    "evidence": [
+      { "id": "cand_01::ev_01", "candidateId": "cand_01", "section": "skills", "text": "Skills: JavaScript, TypeScript, Node.js, React, MongoDB, Git, Docker", "normalized": "skills javascript typescript node.js react mongodb git docker" },
+      { "id": "cand_01::ev_02", "candidateId": "cand_01", "section": "experience", "text": "Backend Intern at Zeta Labs — developed Node.js microservices handling 12k requests/day", "normalized": "backend intern zeta labs developed node.js microservices handling 12k requests day" },
+      { "id": "cand_01::ev_03", "candidateId": "cand_01", "section": "experience", "text": "Designed and documented REST API endpoints consumed by the mobile team", "normalized": "designed documented rest api endpoints consumed mobile team" },
+      { "id": "cand_01::ev_04", "candidateId": "cand_01", "section": "projects", "text": "CampusConnect — a React single-page app with MongoDB persistence and JWT auth", "normalized": "campusconnect react single page app mongodb persistence jwt auth" },
+      { "id": "cand_01::ev_05", "candidateId": "cand_01", "section": "projects", "text": "Wrote Jest unit tests covering the authentication and booking modules", "normalized": "wrote jest unit tests covering authentication booking modules" },
+      { "id": "cand_01::ev_06", "candidateId": "cand_01", "section": "experience", "text": "Collaborated using Git feature branches and reviewed teammates' pull requests", "normalized": "collaborated git feature branches reviewed teammates pull requests" },
+      { "id": "cand_01::ev_07", "candidateId": "cand_01", "section": "projects", "text": "Deployed the staging environment to AWS EC2 with a GitHub Actions pipeline", "normalized": "deployed staging environment aws ec2 github actions pipeline" },
+      { "id": "cand_01::ev_08", "candidateId": "cand_01", "section": "education", "text": "B.Tech Computer Science and Engineering, 2023–2027, CGPA 8.7", "normalized": "b.tech computer science engineering 2023 2027 cgpa 8.7" }
+    ]
+  },
+  {
+    "id": "cand_02",
+    "name": "Priya Nair",
+    "sourceFile": "fixture_strong_semantic_only.pdf",
+    "rawText": "(fixture)",
+    "skillsDeclared": ["javascript", "express", "mongo", "mern"],
+    "_fitLabel": "STRONG but LEXICALLY INVISIBLE — never writes the literal string 'Node.js' or 'React'. THIS IS THE DEMO CANDIDATE. Keyword-only should bury her; hybrid should rescue her.",
+    "evidence": [
+      { "id": "cand_02::ev_01", "candidateId": "cand_02", "section": "skills", "text": "Skills: JavaScript (ES6+), Express, Mongoose, Redux, HTML/CSS", "normalized": "skills javascript es6 express mongoose redux html css" },
+      { "id": "cand_02::ev_02", "candidateId": "cand_02", "section": "projects", "text": "Built REST APIs with Express and MongoDB for a campus food delivery platform", "normalized": "built rest apis express mongodb campus food delivery platform" },
+      { "id": "cand_02::ev_03", "candidateId": "cand_02", "section": "projects", "text": "Developed the entire client interface as a component-based single page application using JSX and hooks", "normalized": "developed entire client interface component based single page application jsx hooks" },
+      { "id": "cand_02::ev_04", "candidateId": "cand_02", "section": "experience", "text": "Full stack developer intern — owned server-side JavaScript services end to end", "normalized": "full stack developer intern owned server side javascript services end to end" },
+      { "id": "cand_02::ev_05", "candidateId": "cand_02", "section": "projects", "text": "Managed the codebase on GitHub with protected branches and code review", "normalized": "managed codebase github protected branches code review" },
+      { "id": "cand_02::ev_06", "candidateId": "cand_02", "section": "projects", "text": "Shipped the production build to Vercel with automatic preview deployments", "normalized": "shipped production build vercel automatic preview deployments" },
+      { "id": "cand_02::ev_07", "candidateId": "cand_02", "section": "education", "text": "Bachelor of Engineering, Information Technology, expected 2027", "normalized": "bachelor engineering information technology expected 2027" }
+    ]
+  },
+  {
+    "id": "cand_03",
+    "name": "Rohan Das",
+    "sourceFile": "fixture_medium_frontend_only.pdf",
+    "rawText": "(fixture)",
+    "skillsDeclared": ["javascript", "react", "css", "figma"],
+    "_fitLabel": "MEDIUM — strong React, zero backend. Must-have gate on req_01 should pull him below cand_02.",
+    "evidence": [
+      { "id": "cand_03::ev_01", "candidateId": "cand_03", "section": "skills", "text": "Skills: React, JavaScript, CSS, Tailwind, Figma, Framer Motion", "normalized": "skills react javascript css tailwind figma framer motion" },
+      { "id": "cand_03::ev_02", "candidateId": "cand_03", "section": "projects", "text": "Built a React dashboard with responsive layouts and accessible components", "normalized": "built react dashboard responsive layouts accessible components" },
+      { "id": "cand_03::ev_03", "candidateId": "cand_03", "section": "experience", "text": "Frontend intern at a design studio — converted Figma mockups into React components", "normalized": "frontend intern design studio converted figma mockups react components" },
+      { "id": "cand_03::ev_04", "candidateId": "cand_03", "section": "projects", "text": "Consumed third-party REST APIs to render live cricket scores", "normalized": "consumed third party rest apis render live cricket scores" },
+      { "id": "cand_03::ev_05", "candidateId": "cand_03", "section": "projects", "text": "Used Git for version control across all personal projects", "normalized": "used git version control across personal projects" },
+      { "id": "cand_03::ev_06", "candidateId": "cand_03", "section": "education", "text": "B.Tech Computer Science, 2024–2028", "normalized": "b.tech computer science 2024 2028" }
+    ]
+  },
+  {
+    "id": "cand_04",
+    "name": "Sneha Iyer",
+    "sourceFile": "fixture_weak_wrong_domain.pdf",
+    "rawText": "(fixture)",
+    "skillsDeclared": ["python", "pandas", "tensorflow", "sql"],
+    "_fitLabel": "WEAK — capable engineer, wrong domain. Should rank last. Tests that the gate does not reward general strength.",
+    "evidence": [
+      { "id": "cand_04::ev_01", "candidateId": "cand_04", "section": "skills", "text": "Skills: Python, Pandas, NumPy, TensorFlow, scikit-learn, SQL", "normalized": "skills python pandas numpy tensorflow scikit learn sql" },
+      { "id": "cand_04::ev_02", "candidateId": "cand_04", "section": "projects", "text": "Trained a CNN for plant disease classification achieving 94% accuracy", "normalized": "trained cnn plant disease classification achieving 94 accuracy" },
+      { "id": "cand_04::ev_03", "candidateId": "cand_04", "section": "experience", "text": "Data science intern — built ETL pipelines and wrote complex SQL aggregations", "normalized": "data science intern built etl pipelines wrote complex sql aggregations" },
+      { "id": "cand_04::ev_04", "candidateId": "cand_04", "section": "projects", "text": "Published a research paper on time series forecasting at a student conference", "normalized": "published research paper time series forecasting student conference" },
+      { "id": "cand_04::ev_05", "candidateId": "cand_04", "section": "projects", "text": "Version controlled all experiments with Git and DVC", "normalized": "version controlled experiments git dvc" },
+      { "id": "cand_04::ev_06", "candidateId": "cand_04", "section": "education", "text": "B.Tech Computer Science and Engineering, 2023–2027", "normalized": "b.tech computer science engineering 2023 2027" }
+    ]
+  }
+]
