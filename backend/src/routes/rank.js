@@ -31,6 +31,7 @@ const crypto = require('crypto');
 const jdFixture = require(path.join(__dirname, '..', 'engine', 'fixtures', 'jd.fixture.json'));
 const { loadFromDir } = require('../engine/parse/loadCandidates');
 const { runPipeline } = require('../engine/match/score');
+const { explainTop } = require('../engine/explain/explain');
 const { runAblation } = require('../engine/match/ablate');
 const cfg = require('../engine/match/config');
 
@@ -97,9 +98,11 @@ function _resolveJd(body) {
   return jdFixture;
 }
 
-function _shapeResult(jd, ranked, mode) {
-  // Contract shape. explanation stays null until C's explain.js runs. biasFlags
-  // stays empty until C's bias.js runs. Both are optional for now.
+function _shapeResult(jd, ranked, mode, candidates) {
+  // Top-3 explanations are a hard deliverable in the problem statement, not a
+  // nice-to-have. `candidates` is passed through so explanations can quote a
+  // candidate's own negated claims ("have never built anything with Node.js").
+  explainTop(ranked, jd, { candidates, n: 3 });
   return {
     jd,
     candidates: ranked,
@@ -205,7 +208,7 @@ router.post('/rank', async (req, res) => {
     };
     if (lexicalField) runOpts.lexicalField = lexicalField;
     const ranked = await runPipeline(jd, candidates, runOpts);
-    const result = _shapeResult(jd, ranked, modeParam);
+    const result = _shapeResult(jd, ranked, modeParam, candidates);
     if (isTuned) result.meta.tuned = overrides;
     if (traceOn) result.meta.trace = true;
     if (!isTuned) _rankCache.set(key, result);

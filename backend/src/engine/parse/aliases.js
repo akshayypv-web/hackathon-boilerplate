@@ -37,6 +37,7 @@ const ALIASES = {
     'heroku', 'netlify', 'digitalocean', 'docker', 'kubernetes', 'ci/cd', 'github actions',
     'deployed', 'deployment'],
   testing: ['jest', 'mocha', 'chai', 'vitest', 'cypress', 'playwright', 'pytest', 'junit',
+    'automated tests', 'automated testing', 'tests', 'test automation', 'qa',
     'unit test', 'unit tests', 'integration test', 'test coverage', 'tdd'],
   python: ['py', 'django', 'flask', 'fastapi', 'pandas', 'numpy'],
   java: ['spring', 'spring boot', 'jvm'],
@@ -193,4 +194,4 @@ function detectSkills(text) {
   return [...found].sort();
 }
 
-module.exports = { ALIASES, normalize, expandAliases, detectSkills };
+module.exports = { ALIASES, normalize, expandAliases, detectSkills, fuzzyAlias };

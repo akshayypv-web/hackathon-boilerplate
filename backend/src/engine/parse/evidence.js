@@ -199,9 +199,29 @@ const NEGATION_ANYWHERE = new RegExp(
   'i'
 );
 
+/**
+ * Verb-form denial: "have never built anything with Node.js", "haven't used
+ * React", "no longer work with Java".
+ *
+ * Caught a real failure: a candidate wrote "Comfortable with backend logic and
+ * databases but have never built anything with Node.js" and the engine cited
+ * that exact sentence as EVIDENCE SHE HAS NODE.JS. The noun-form patterns above
+ * miss it because the negation attaches to a verb, not a capability noun.
+ */
+const NEGATION_VERB = new RegExp(
+  '\\b(never|not|n\'t|nor)\\s+' +
+  '(really\\s+|actually\\s+|formally\\s+|yet\\s+|ever\\s+)?' +
+  '(built|build|used|use|worked|work|written|write|wrote|touched|coded|code' +
+  '|developed|develop|implemented|implement|shipped|deployed|studied|learned)\\b',
+  'i'
+);
+
+/** "but have never ...", "although I have not ..." — a clause-level reversal. */
+const NEGATION_CLAUSE = /\b(but|though|although|however)\s+(i\s+)?(have\s+|has\s+|had\s+)?(never|not|no)\b/i;
+
 function isNegated(text) {
   const t = text.trim();
-  return NEGATION_START.test(t) || NEGATION_ANYWHERE.test(t);
+  return NEGATION_START.test(t) || NEGATION_ANYWHERE.test(t) || NEGATION_VERB.test(t) || NEGATION_CLAUSE.test(t);
 }
 
 /** One line -> one or more claim strings, depending on section. */
@@ -223,7 +243,10 @@ function splitIntoClaims(line, section) {
         const s = sentence.trim();
         if (!s) return [];
         if (isNegated(s)) return [s];             // keep whole, do not enumerate
-        return s.split(/[,;|]|\s{2,}|[•▪●○◦‣∙]/);
+        // Protect commas inside parentheses: "AWS (EC2, S3, Lambda)" must not
+        // become "AWS (EC2" / "S3" / "Lambda)".
+        const guarded = s.replace(/\(([^)]*)\)/g, (m) => m.replace(/,/g, ''));
+        return guarded.split(/[,;|]|\s{2,}|[•▪●○◦‣∙]/).map((p) => p.replace(//g, ','));
       })
       .map((s) => s.replace(/[.\s]+$/, '').trim())
       .filter(Boolean);
