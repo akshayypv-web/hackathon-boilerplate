@@ -1,0 +1,26 @@
+{
+  "id": "devops",
+  "title": "DevOps Engineer",
+  "company": "TechNova Infra",
+  "rawText": "TechNova Infra is hiring a DevOps Engineer to own the deployment story for our product platform.\n\nWhat we're looking for:\n- Deep familiarity with Linux and shell\n- Docker and Kubernetes in production\n- CI/CD pipelines (GitHub Actions, GitLab CI, CircleCI)\n- Cloud platforms (AWS, GCP, or Azure) and Infrastructure as Code\n- Monitoring and observability (Prometheus, Grafana, or equivalent)\n\nNice to have:\n- Terraform or Pulumi\n- Site reliability engineering background\n- Security hardening experience",
+  "requirements": [
+    { "id": "req_01", "text": "Linux and shell fluency", "kind": "MUST", "category": "skill",
+      "aliases": ["linux", "bash", "shell", "unix", "ubuntu", "debian"], "weight": 1.0 },
+    { "id": "req_02", "text": "Docker and containerisation", "kind": "MUST", "category": "skill",
+      "aliases": ["docker", "container", "dockerfile", "podman"], "weight": 1.2 },
+    { "id": "req_03", "text": "Kubernetes in production", "kind": "MUST", "category": "skill",
+      "aliases": ["kubernetes", "k8s", "helm", "kubectl", "eks", "gke", "aks"], "weight": 1.2 },
+    { "id": "req_04", "text": "CI/CD pipelines", "kind": "MUST", "category": "skill",
+      "aliases": ["ci/cd", "github actions", "gitlab ci", "circleci", "jenkins", "pipeline", "workflow"], "weight": 1.0 },
+    { "id": "req_05", "text": "Cloud platforms", "kind": "MUST", "category": "skill",
+      "aliases": ["aws", "gcp", "azure", "cloud", "ec2", "s3", "lambda"], "weight": 1.0 },
+    { "id": "req_06", "text": "Monitoring and observability", "kind": "MUST", "category": "skill",
+      "aliases": ["prometheus", "grafana", "datadog", "monitoring", "observability", "logging", "metrics"], "weight": 0.8 },
+    { "id": "req_07", "text": "Infrastructure as code", "kind": "NICE", "category": "skill",
+      "aliases": ["terraform", "pulumi", "ansible", "cloudformation", "iac"], "weight": 0.6 },
+    { "id": "req_08", "text": "Site reliability background", "kind": "NICE", "category": "experience",
+      "aliases": ["sre", "site reliability", "on-call", "incident", "reliability", "uptime"], "weight": 0.4 },
+    { "id": "req_09", "text": "Undergraduate degree in CS or related", "kind": "MUST", "category": "education",
+      "aliases": ["computer science", "cse", "information technology", "engineering", "b.tech", "btech"], "weight": 0.5 }
+  ]
+}

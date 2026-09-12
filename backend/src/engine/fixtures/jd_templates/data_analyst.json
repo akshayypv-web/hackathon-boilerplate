@@ -1,0 +1,26 @@
+{
+  "id": "data_analyst",
+  "title": "Data Analyst",
+  "company": "TechNova Analytics",
+  "rawText": "TechNova Analytics is looking for a Data Analyst to work with product and business teams to turn data into decisions.\n\nWhat we're looking for:\n- Strong SQL and comfort with large datasets\n- Excel and dashboarding tools (Tableau, Power BI, Looker, Metabase)\n- Python or R for analysis\n- Statistical reasoning and A/B test analysis\n- Clear written and verbal communication\n\nNice to have:\n- BigQuery / Snowflake experience\n- Experience turning insights into product recommendations\n- Business or economics background",
+  "requirements": [
+    { "id": "req_01", "text": "Strong SQL", "kind": "MUST", "category": "skill",
+      "aliases": ["sql", "postgres", "postgresql", "mysql", "sqlite", "queries", "joins"], "weight": 1.2 },
+    { "id": "req_02", "text": "Dashboarding tools", "kind": "MUST", "category": "skill",
+      "aliases": ["tableau", "power bi", "powerbi", "looker", "metabase", "dashboard", "visualization"], "weight": 1.0 },
+    { "id": "req_03", "text": "Python or R for analysis", "kind": "MUST", "category": "skill",
+      "aliases": ["python", "pandas", "numpy", "r", "jupyter", "data analysis"], "weight": 1.0 },
+    { "id": "req_04", "text": "Statistical reasoning and A/B test analysis", "kind": "MUST", "category": "skill",
+      "aliases": ["statistics", "a/b test", "ab test", "hypothesis", "regression", "significance"], "weight": 0.9 },
+    { "id": "req_05", "text": "Excel proficiency", "kind": "MUST", "category": "skill",
+      "aliases": ["excel", "google sheets", "spreadsheet", "pivot table", "vlookup"], "weight": 0.7 },
+    { "id": "req_06", "text": "Clear communication", "kind": "MUST", "category": "soft",
+      "aliases": ["communication", "presentation", "writing", "report", "stakeholder"], "weight": 0.5 },
+    { "id": "req_07", "text": "BigQuery or Snowflake", "kind": "NICE", "category": "skill",
+      "aliases": ["bigquery", "snowflake", "redshift", "warehouse", "data warehouse"], "weight": 0.5 },
+    { "id": "req_08", "text": "Business or economics background", "kind": "NICE", "category": "education",
+      "aliases": ["business", "economics", "finance", "mba", "management"], "weight": 0.4 },
+    { "id": "req_09", "text": "Undergraduate degree in a quantitative field", "kind": "MUST", "category": "education",
+      "aliases": ["mathematics", "statistics", "computer science", "engineering", "economics", "b.tech", "btech", "bachelor"], "weight": 0.6 }
+  ]
+}

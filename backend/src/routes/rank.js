@@ -1,306 +1,304 @@
 /**
- * Person D — integration route.
+ * /api/rank, /api/ablation, /api/health.
  *
- * Wires parse -> decompose -> score -> explain into POST /api/rank, plus
- * /api/ablation, /api/chat, /api/health.
+ * Owner in the plan is D (Charvis), but B is shipping this now to unblock
+ * frontend work while C's decompose/explain/bias/chat is not yet in.
  *
- * B and C's engine modules (jd/decompose.js, match/score.js, match/ablate.js,
- * explain/explain.js, explain/bias.js, explain/chat.js) don't exist in the repo
- * yet. Rather than block on them, this route tries to require each one and
- * falls back to a small deterministic stub scorer when a module is missing,
- * so the API shape, caching, and frontend can all be built and demoed against
- * the fixtures right now. Once a teammate's file lands, this route picks it up
- * automatically on next server restart — no route changes needed.
+ * Behaviour today:
+ *   POST /api/rank
+ *     body: { jd?: JobDescription, mode?: "hybrid"|"lexical_only"|"semantic_only" }
+ *     Uses the TechNova JD fixture when no jd is supplied. When C ships
+ *     jd/decompose.js, accept a raw string too and decompose it here.
+ *
+ *   GET /api/ablation
+ *     Runs the three modes over the current pool and returns a rank
+ *     comparison table.
+ *
+ *   GET /api/health
+ *     Reports whether resumes have loaded, the current pool size, and which
+ *     modes are cached.
+ *
+ * Everything is cached in memory the first time it runs. The 18 resumes get
+ * parsed once. Per-mode CandidateScore[] arrays are cached per (jdHash, mode)
+ * so the second call to /api/rank on the same JD is effectively free.
  */
 
-const path = require('path');
+const express = require('express');
 const fs = require('fs');
-const { validatePipelineResult, MODES } = require('../engine/contract');
+const path = require('path');
+const crypto = require('crypto');
 
-const CACHE_DIR = path.join(__dirname, '..', 'engine', '.cache');
-const CACHE_PATH = path.join(CACHE_DIR, 'pipeline.json');
+const jdFixture = require(path.join(__dirname, '..', 'engine', 'fixtures', 'jd.fixture.json'));
+const { loadFromDir } = require('../engine/parse/loadCandidates');
+const { runPipeline } = require('../engine/match/score');
+const { runAblation } = require('../engine/match/ablate');
+const cfg = require('../engine/match/config');
+
 const RESUMES_DIR = path.join(__dirname, '..', '..', '..', 'data', 'resumes');
+const ABLATION_DISK_CACHE = path.join(__dirname, '..', 'engine', '.cache', 'ablation.json');
+const JD_TEMPLATES_DIR = path.join(__dirname, '..', 'engine', 'fixtures', 'jd_templates');
 
-const JD_FIXTURE = require('../engine/fixtures/jd.fixture.json');
-const CANDIDATES_FIXTURE = require('../engine/fixtures/candidates.fixture.json');
-
-function tryRequire(relPath) {
+// Preload every JD template on boot. Also register the fixture as
+// "full_stack" so the same UI can list all five.
+function _loadJdTemplates() {
+  const templates = {
+    full_stack: { ...jdFixture, id: 'full_stack' },
+  };
   try {
-    return require(relPath);
-  } catch (err) {
-    return null;
-  }
-}
-
-const decomposeEngine = tryRequire('../engine/jd/decompose');
-const scoreEngine = tryRequire('../engine/match/score');
-const ablateEngine = tryRequire('../engine/match/ablate');
-const explainEngine = tryRequire('../engine/explain/explain');
-const biasEngine = tryRequire('../engine/explain/bias');
-
-function readCache() {
-  try {
-    if (fs.existsSync(CACHE_PATH)) {
-      return JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
+    for (const fname of fs.readdirSync(JD_TEMPLATES_DIR)) {
+      if (!fname.endsWith('.json')) continue;
+      const jd = JSON.parse(fs.readFileSync(path.join(JD_TEMPLATES_DIR, fname), 'utf8'));
+      if (jd && jd.id) templates[jd.id] = jd;
     }
   } catch (err) {
-    console.warn('[rank] failed to read cache:', err.message);
+    console.warn(`[jd-templates] load failed: ${err.message}`);
   }
-  return null;
+  return templates;
+}
+const JD_TEMPLATES = _loadJdTemplates();
+
+const router = express.Router();
+
+// ---- module-level caches ---------------------------------------------------
+
+let _candidatesPromise = null;      // Promise<Candidate[]>
+const _rankCache = new Map();       // key(jd, mode) -> PipelineResult
+const _ablationCache = new Map();   // key(jd) -> ablation payload
+
+function _jdKey(jd) {
+  return crypto.createHash('sha1').update(JSON.stringify(jd)).digest('hex').slice(0, 12);
 }
 
-function writeCache(result) {
-  try {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-    fs.writeFileSync(CACHE_PATH, JSON.stringify(result, null, 2));
-  } catch (err) {
-    console.warn('[rank] failed to write cache:', err.message);
-  }
-}
-
-/**
- * STUB scorer — deterministic alias-hit counting, no LLM, no pool
- * normalisation. Only used until Person B's match/score.js exists.
- * Delete this whole function once scoreEngine is real.
- */
-function stubScore(jd, candidates, mode) {
-  const candidateScores = candidates.map((c) => {
-    const requirementScores = jd.requirements.map((r) => {
-      const needles = [r.text.toLowerCase(), ...(r.aliases || []).map((a) => a.toLowerCase())];
-      let best = { hits: 0, unit: null };
-      (c.evidence || []).forEach((e) => {
-        const haystack = (e.expanded || e.normalized || e.text || '').toLowerCase();
-        const hits = needles.filter((n) => haystack.includes(n)).length;
-        if (hits > best.hits) best = { hits, unit: e };
-      });
-      const raw = best.hits > 0 ? Math.min(1, best.hits / 3) : 0;
-      return {
-        requirementId: r.id,
-        candidateId: c.id,
-        lexicalRaw: raw,
-        semanticRaw: raw,
-        lexicalNorm: raw,
-        semanticNorm: raw,
-        fused: raw,
-        satisfied: raw >= 0.34,
-        evidenceId: best.unit ? best.unit.id : null,
-        evidenceText: best.unit ? best.unit.text : '',
-        matchedBy: best.hits > 0 ? 'lexical' : 'none',
-      };
+function _getCandidates() {
+  if (!_candidatesPromise) {
+    _candidatesPromise = loadFromDir(RESUMES_DIR).then(cs => {
+      console.log(`[rank] loaded ${cs.length} candidates from ${RESUMES_DIR}`);
+      return cs;
+    }).catch(err => {
+      _candidatesPromise = null; // let a later retry succeed
+      throw err;
     });
-
-    const missingMustHaves = requirementScores
-      .filter((rs, i) => jd.requirements[i].kind === 'MUST' && !rs.satisfied)
-      .map((rs) => rs.requirementId);
-    const gatePenalty = Math.pow(0.75, missingMustHaves.length);
-    const weightSum = jd.requirements.reduce((s, r) => s + r.weight, 0) || 1;
-    const base = requirementScores.reduce(
-      (s, rs, i) => s + rs.fused * jd.requirements[i].weight,
-      0
-    ) / weightSum;
-
-    return {
-      candidateId: c.id,
-      name: c.name,
-      finalScore: 0,
-      rank: 0,
-      requirementScores,
-      missingMustHaves,
-      gatePenalty,
-      explanation: null,
-      _raw: base * gatePenalty,
-    };
-  });
-
-  const rawScores = candidateScores.map((c) => c._raw);
-  const min = Math.min(...rawScores);
-  const max = Math.max(...rawScores);
-  const spread = max - min || 1;
-
-  candidateScores.forEach((c) => {
-    c.finalScore = Math.round(((c._raw - min) / spread) * 1000) / 10;
-    delete c._raw;
-  });
-
-  candidateScores.sort((a, b) => b.finalScore - a.finalScore);
-  candidateScores.forEach((c, i) => {
-    c.rank = i + 1;
-  });
-
-  candidateScores.slice(0, 3).forEach((c) => {
-    const matched = c.requirementScores
-      .filter((rs) => rs.satisfied)
-      .sort((a, b) => b.fused - a.fused)
-      .slice(0, 4)
-      .map((rs) => ({
-        requirementText: jd.requirements.find((r) => r.id === rs.requirementId).text,
-        evidenceText: rs.evidenceText,
-        score: rs.fused,
-        matchedBy: rs.matchedBy,
-      }));
-    const missing = c.missingMustHaves.map((id) => ({
-      requirementText: jd.requirements.find((r) => r.id === id).text,
-      kind: 'MUST',
-    }));
-    const satisfiedCount = c.requirementScores.filter((rs) => rs.satisfied).length;
-    c.explanation = {
-      summary: `${c.name} satisfies ${satisfiedCount}/${jd.requirements.length} requirements. (stub scoring — replace with match/score.js)`,
-      matched,
-      missing,
-    };
-  });
-
-  return candidateScores;
-}
-
-function resolveJd(body) {
-  if (body && body.jd && Array.isArray(body.jd.requirements)) return body.jd;
-  if (decomposeEngine && decomposeEngine.decompose) {
-    return decomposeEngine.decompose(JD_FIXTURE.rawText);
   }
-  return JD_FIXTURE;
+  return _candidatesPromise;
 }
 
-function resolveCandidates(body) {
-  if (body && Array.isArray(body.candidates) && body.candidates.length) return body.candidates;
-  return CANDIDATES_FIXTURE;
-}
-
-function buildResult({ jd, candidates, mode }) {
-  const usingRealEngine = !!(scoreEngine && scoreEngine.scoreAll);
-  let candidateScores;
-
-  if (usingRealEngine) {
-    candidateScores = scoreEngine.scoreAll(jd, candidates, mode);
-    if (explainEngine && explainEngine.explainTop) {
-      explainEngine.explainTop(candidateScores, jd, 3);
+function _resolveJd(body) {
+  // Precedence: explicit jd object > jdId lookup > raw string > fixture default.
+  if (body?.jd && typeof body.jd === 'object') return body.jd;
+  if (body?.jdId && JD_TEMPLATES[body.jdId]) return JD_TEMPLATES[body.jdId];
+  if (typeof body?.jd === 'string') {
+    try {
+      const { decompose } = require('../engine/jd/decompose');
+      return decompose(body.jd);
+    } catch (err) {
+      return { ...jdFixture, _warning: 'jd/decompose.js not shipped; used fixture JD' };
     }
-  } else {
-    candidateScores = stubScore(jd, candidates, mode);
   }
+  return jdFixture;
+}
 
-  const biasFlags = biasEngine && biasEngine.flagBias ? biasEngine.flagBias(jd.rawText) : [];
-
-  const result = {
+function _shapeResult(jd, ranked, mode) {
+  // Contract shape. explanation stays null until C's explain.js runs. biasFlags
+  // stays empty until C's bias.js runs. Both are optional for now.
+  return {
     jd,
-    candidates: candidateScores,
+    candidates: ranked,
     mode,
-    biasFlags,
+    biasFlags: [],
     meta: {
-      stub: !usingRealEngine,
       generatedAt: new Date().toISOString(),
+      poolSize: ranked.length,
+      config: {
+        alpha: cfg.alpha,
+        gateThreshold: cfg.gateThreshold,
+        gatePenaltyPerMiss: cfg.gatePenaltyPerMiss,
+      },
     },
   };
-
-  validatePipelineResult(result);
-  return result;
 }
 
-function runAblation(jd, candidates) {
-  if (ablateEngine && ablateEngine.runAblation) {
-    return ablateEngine.runAblation(jd, candidates);
+// ---- routes ----------------------------------------------------------------
+
+// JD template library. Charvis binds these to a dropdown; picking one calls
+// POST /api/rank with { jdId } and the whole pool re-ranks against a totally
+// different role. Same 18 resumes, different rankings — great demo moment.
+router.get('/jds', (req, res) => {
+  const list = Object.values(JD_TEMPLATES).map(jd => ({
+    id: jd.id,
+    title: jd.title,
+    company: jd.company,
+    reqCount: (jd.requirements || []).length,
+  }));
+  res.json({ templates: list });
+});
+
+router.get('/jds/:id', (req, res) => {
+  const jd = JD_TEMPLATES[req.params.id];
+  if (!jd) return res.status(404).json({ error: `no template "${req.params.id}"` });
+  res.json(jd);
+});
+
+router.get('/health', async (req, res) => {
+  const loaded = _candidatesPromise !== null;
+  let poolSize = null;
+  if (loaded) {
+    try { poolSize = (await _candidatesPromise).length; } catch (_) { poolSize = null; }
   }
-  const modes = ['lexical_only', 'semantic_only', 'hybrid'];
-  const ranksByCandidate = {};
-  modes.forEach((mode) => {
-    stubScore(jd, candidates, mode).forEach((c) => {
-      ranksByCandidate[c.candidateId] = ranksByCandidate[c.candidateId] || { name: c.name };
-      ranksByCandidate[c.candidateId][mode] = c.rank;
-    });
+  res.json({
+    ok: true,
+    candidatesLoaded: loaded,
+    poolSize,
+    cachedModes: [..._rankCache.keys()],
+    cachedAblations: [..._ablationCache.keys()],
+    resumesDir: RESUMES_DIR,
   });
-  return {
-    candidates: candidates.map((c) => {
-      const r = ranksByCandidate[c.id];
-      return {
-        name: r.name,
-        lexicalRank: r.lexical_only,
-        semanticRank: r.semantic_only,
-        hybridRank: r.hybrid,
-        delta: r.lexical_only - r.hybrid,
-      };
-    }),
-    meta: { stub: !(ablateEngine && ablateEngine.runAblation) },
-  };
+});
+
+// Which body fields count as tuning overrides. If ANY of these are present in
+// the request body, we bypass the mode-preset alpha and skip caching (fresh
+// compute per slider position). Everything else in cfg still applies unless
+// overridden the same way.
+const TUNABLE_KEYS = ['alpha', 'gateThreshold', 'gatePenaltyPerMiss', 'satisfyThreshold', 'matchBothThreshold'];
+
+function _extractOverrides(body) {
+  const out = {};
+  for (const k of TUNABLE_KEYS) if (body && body[k] != null) out[k] = Number(body[k]);
+  return out;
 }
 
-function handleRank(req, res) {
-  const mode = MODES.includes(req.query.mode) ? req.query.mode : 'hybrid';
-  const forceFresh = req.query.fresh === 'true' || req.query.fresh === '1';
-  const usingCustomInput = !!(req.body && (req.body.jd || req.body.candidates));
-
-  if (!usingCustomInput && !forceFresh) {
-    const cached = readCache();
-    if (cached && cached.mode === mode) {
-      return res.json(cached);
-    }
+// Lexical field is a string, not a number — kept separate from the numeric
+// tunables. 'expanded' (default) uses Akshay's alias-inflated text so the
+// query matches "Node.js" through resume-side "Express". 'normalized' gives
+// the literal-keyword ablation row.
+function _extractLexicalField(body) {
+  if (body && (body.lexicalField === 'normalized' || body.lexicalField === 'expanded')) {
+    return body.lexicalField;
   }
+  return undefined;
+}
 
+router.post('/rank', async (req, res) => {
   try {
-    const jd = resolveJd(req.body);
-    const candidates = resolveCandidates(req.body);
-    const result = buildResult({ jd, candidates, mode });
-    if (!usingCustomInput) writeCache(result);
+    const modeParam = (req.query.mode || req.body?.mode || 'hybrid').toString();
+    const validModes = { hybrid: 0.5, lexical_only: 1.0, semantic_only: 0.0 };
+    if (!(modeParam in validModes)) {
+      return res.status(400).json({ error: `bad mode "${modeParam}" (want hybrid|lexical_only|semantic_only)` });
+    }
+
+    const jd = _resolveJd(req.body);
+    const overrides = _extractOverrides(req.body);
+    const lexicalField = _extractLexicalField(req.body);
+    const isTuned = Object.keys(overrides).length > 0 || lexicalField != null;
+    const traceOn = String(req.query.trace || req.body?.trace || '') === '1' || req.body?.trace === true;
+
+    const key = `${_jdKey(jd)}:${modeParam}${lexicalField ? `:${lexicalField}` : ''}${traceOn ? ':trace' : ''}`;
+    if (!isTuned && _rankCache.has(key)) {
+      return res.json(_rankCache.get(key));
+    }
+
+    const candidates = await _getCandidates();
+    const runOpts = {
+      alpha: overrides.alpha != null ? overrides.alpha : validModes[modeParam],
+      mode: modeParam,
+      trace: traceOn,
+      ...overrides,
+    };
+    if (lexicalField) runOpts.lexicalField = lexicalField;
+    const ranked = await runPipeline(jd, candidates, runOpts);
+    const result = _shapeResult(jd, ranked, modeParam);
+    if (isTuned) result.meta.tuned = overrides;
+    if (traceOn) result.meta.trace = true;
+    if (!isTuned) _rankCache.set(key, result);
     res.json(result);
   } catch (err) {
-    console.error('[rank] failed:', err);
+    console.error('[rank] error:', err);
     res.status(500).json({ error: err.message });
   }
-}
+});
 
-function registerRankRoutes(app) {
-  app.post('/api/rank', handleRank);
-  app.get('/api/rank', handleRank);
-
-  app.get('/api/ablation', (req, res) => {
-    try {
-      const jd = resolveJd(null);
-      const result = runAblation(jd, CANDIDATES_FIXTURE);
-      res.json(result);
-    } catch (err) {
-      console.error('[ablation] failed:', err);
-      res.status(500).json({ error: err.message });
-    }
+// Persistent tune: mutate cfg + clear result cache. Judges love this during
+// live demo — flip a slider on the frontend and every subsequent /api/rank
+// respects the new value. Returns the effective config for confirmation.
+router.post('/tune', (req, res) => {
+  const overrides = _extractOverrides(req.body);
+  if (!Object.keys(overrides).length) {
+    return res.status(400).json({ error: `body must include at least one of: ${TUNABLE_KEYS.join(', ')}` });
+  }
+  Object.assign(cfg, overrides);
+  _rankCache.clear();
+  _ablationCache.clear();
+  res.json({
+    ok: true,
+    applied: overrides,
+    config: {
+      alpha: cfg.alpha,
+      gateThreshold: cfg.gateThreshold,
+      gatePenaltyPerMiss: cfg.gatePenaltyPerMiss,
+      satisfyThreshold: cfg.satisfyThreshold,
+      matchBothThreshold: cfg.matchBothThreshold,
+    },
   });
+});
 
-  app.post('/api/chat', (req, res) => {
-    const chatEngine = tryRequire('../engine/explain/chat');
-    const { question, pipelineResult } = req.body || {};
-    if (!question || !pipelineResult) {
-      return res.status(400).json({ error: 'question and pipelineResult are required' });
+router.get('/ablation', async (req, res) => {
+  try {
+    const jd = jdFixture;
+    const key = _jdKey(jd);
+    if (_ablationCache.has(key)) return res.json(_ablationCache.get(key));
+
+    // Demo insurance: if precompute.js has written .cache/ablation.json for
+    // this jd, serve that directly. Server crashes stop being demo-lethal.
+    if (fs.existsSync(ABLATION_DISK_CACHE)) {
+      try {
+        const disk = JSON.parse(fs.readFileSync(ABLATION_DISK_CACHE, 'utf8'));
+        if (disk.jdKey === key) {
+          _ablationCache.set(key, disk);
+          return res.json(disk);
+        }
+      } catch (err) {
+        console.warn(`[ablation] disk cache unreadable: ${err.message}`);
+      }
     }
-    if (chatEngine && chatEngine.answer) {
-      Promise.resolve(chatEngine.answer(question, pipelineResult))
-        .then((answer) => res.json(answer))
-        .catch((err) => res.status(500).json({ error: err.message }));
-      return;
-    }
-    res.json({
-      text: `Chat engine not wired yet (stub). You asked: "${question}"`,
-      citedCandidates: [],
-      quotes: [],
-    });
-  });
 
-  app.get('/api/health', (req, res) => {
-    res.json({
-      cache: {
-        pipelineCached: fs.existsSync(CACHE_PATH),
-        path: CACHE_PATH,
-      },
-      engines: {
-        decompose: !!(decomposeEngine && decomposeEngine.decompose),
-        score: !!(scoreEngine && scoreEngine.scoreAll),
-        ablate: !!(ablateEngine && ablateEngine.runAblation),
-        explain: !!(explainEngine && explainEngine.explainTop),
-        bias: !!(biasEngine && biasEngine.flagBias),
-        chat: !!tryRequire('../engine/explain/chat'),
-      },
-      data: {
-        resumesDirExists: fs.existsSync(RESUMES_DIR),
-        resumesDirCount: fs.existsSync(RESUMES_DIR) ? fs.readdirSync(RESUMES_DIR).length : 0,
-      },
-    });
-  });
-}
+    const candidates = await _getCandidates();
+    const { rows, literal, lexical, semantic, hybrid } = await runAblation(jd, candidates);
 
-module.exports = { registerRankRoutes };
+    const payload = {
+      candidates: rows.map(r => ({
+        candidateId: r.candidateId,
+        name: r.name,
+        literalRank: r.literalRank,
+        lexicalRank: r.lexicalRank,
+        semanticRank: r.semanticRank,
+        hybridRank: r.hybridRank,
+        delta: r.litToHybridDelta,
+        litToHybridDelta: r.litToHybridDelta,
+        lexToHybridDelta: r.lexToHybridDelta,
+        semToHybridDelta: r.semToHybridDelta,
+      })),
+      scores: {
+        literal:  literal.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+        lexical:  lexical.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+        semantic: semantic.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+        hybrid:   hybrid.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+      },
+      meta: { poolSize: candidates.length, generatedAt: new Date().toISOString() },
+    };
+    _ablationCache.set(key, payload);
+    res.json(payload);
+  } catch (err) {
+    console.error('[ablation] error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Clears the in-memory result caches — useful mid-demo if C ships new
+// explanations or D wants to bust a stale cache. Never clears the on-disk
+// embedding cache.
+router.post('/reset-cache', (req, res) => {
+  _rankCache.clear();
+  _ablationCache.clear();
+  res.json({ ok: true });
+});
+
+module.exports = router;

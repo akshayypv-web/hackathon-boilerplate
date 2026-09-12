@@ -12,14 +12,73 @@
 
 const { normalize, expandAliases } = require('./aliases');
 
+/**
+ * Section header patterns, deliberately generous.
+ *
+ * Real resumes do not agree on headings. Observed in our own test batch:
+ * "Work History", "Personal Project", "My Journey So Far", "Things I Did".
+ * A tight regex silently dumps those whole sections into "other" and leaves the
+ * heading itself sitting in the index as a bogus evidence unit.
+ */
+/**
+ * ORDER IS SIGNIFICANT — first match wins.
+ *
+ * "PROFESSIONAL SUMMARY" contains both "professional" and "summary". With the
+ * experience pattern first it is classified as experience and the candidate's
+ * summary prose lands in the wrong section, so summary is tested first.
+ * Likewise "Academic Projects" must reach the projects rule before education.
+ */
 const SECTION_PATTERNS = [
-  [/^(work\s+)?experience|^employment|^internships?|^professional/i, 'experience'],
-  [/^projects?|^portfolio|^personal\s+work/i, 'projects'],
-  [/^(technical\s+|core\s+)?skills?|^technolog|^competenc|^expertise|^proficienc|^tools/i, 'skills'],
-  [/^education|^academic|^qualification/i, 'education'],
-  [/^summary|^objective|^profile|^about/i, 'other'],
-  [/^certification|^awards?|^achievement|^publication|^activities|^extracurricular|^interests?|^hobbies|^languages|^references/i, 'other'],
+  [/summary|objective|profile|^about|introduction|overview/i, 'other'],
+  // "technolog" is anchored: unanchored it swallows "Bachelor of Technology"
+  // and "B.Sc. Information Technology" as skills HEADINGS, and headings are
+  // never emitted as evidence — so the degree line disappears entirely.
+  [/^(technical\s+|core\s+|key\s+|relevant\s+)?skills?|^technolog|competenc|expertise|proficienc|^tools|tech\s+stack/i, 'skills'],
+  [/projects?|portfolio|personal\s+(work|project)|side\s+project|things\s+i\s+(did|built|made)|what\s+i\s+built|builds?/i, 'projects'],
+  [/experience|employment|work\s+(history|background)|internships?|professional|career|positions?\s+held|journey|roles?/i, 'experience'],
+  [/education|academic|qualification|schooling|coursework|degrees?/i, 'education'],
+  [/certification|awards?|achievement|publication|activities|extracurricular|interests?|hobbies|languages|references|volunteer/i, 'other'],
 ];
+
+/**
+ * Does this line LOOK like a heading, regardless of wording? Short, titled, no
+ * sentence punctuation, not contact info. Used to catch headers we have no
+ * keyword for, so they are removed from the index and can be classified by
+ * what follows them.
+ */
+function looksLikeHeader(line) {
+  const t = line.trim().replace(/[:\s]+$/, '');
+  if (!t || t.length > 40) return false;
+  if (BULLET_GLYPH.test(line)) return false;
+  if (/[.!?,]$/.test(t)) return false;
+  if (t.split(/\s+/).length > 5) return false;
+  if (/[@|]|https?:\/\//.test(t)) return false;        // contact / link lines
+  if (/\d{4}/.test(t)) return false;                    // "Habit Tracker -- Jan 2023"
+  if (!/^[A-Z]/.test(t)) return false;                  // headings start capitalised
+  if (LABELLED_CONTENT.test(line)) return false;        // "Languages: Python, SQL"
+  if (DEGREE_LINE.test(t)) return false;                // "Bachelor of Technology"
+  return true;
+}
+
+/**
+ * Classify an unrecognised header by the content underneath it.
+ * "Things I Did" followed by dated company lines is experience; followed by
+ * "Built a ..." is projects.
+ */
+function inferSectionFromFollowing(lines, startIdx) {
+  const lookahead = lines.slice(startIdx + 1, startIdx + 5).join(' ').toLowerCase();
+  if (!lookahead.trim()) return 'other';
+
+  const projectish = /\b(built|developed|created|designed|made|implemented)\b.*\b(app|application|website|site|platform|tool|bot|game|clone|system)\b/.test(lookahead);
+  const experienceish =
+    /\b(intern|internship|engineer|developer|analyst|associate|manager|assistant|executive|consultant)\b/.test(lookahead) ||
+    /\b(ltd|inc|pvt|llp|technologies|solutions|labs|systems|corp)\b/.test(lookahead) ||
+    /\b(20\d{2})\s*[–—-]\s*(20\d{2}|present|current)\b/.test(lookahead);
+
+  if (experienceish && !projectish) return 'experience';
+  if (projectish) return 'projects';
+  return 'experience'; // unlabelled narrative on a resume is usually work history
+}
 
 const BULLET_GLYPH = /^[\s]*[•▪●○◦‣∙*−–—-]+\s*/;
 const BULLET_SPLIT = /[•▪●○◦‣∙]\s*/;
@@ -50,12 +109,34 @@ const MIN_LEN = { skills: 2, experience: 12, projects: 12, education: 8, other: 
 
 const MAX_LEN = 300;
 
+/**
+ * A label with content after it is data, not a heading.
+ *
+ * "Languages: Python, SQL, C++" matched the spoken-languages rule and flipped the
+ * section to "other" right after a real Skills heading, silently costing 55 of
+ * 220 resumes their entire skills section. A heading never carries a populated
+ * value, so a colon followed by two or more words disqualifies the line.
+ */
+const LABELLED_CONTENT = /:\s*\S+(\s+|,)\S+/;
+
+/**
+ * A degree line is content, never a heading.
+ *
+ * "Bachelor of Technology" and "B.Sc. Information Technology" are short, titled
+ * and unpunctuated, so every structural test passes and they get absorbed as
+ * headings — deleting the degree from the evidence entirely, on a JD that has a
+ * degree requirement.
+ */
+const DEGREE_LINE = /\b(b\.?\s?tech|b\.?\s?sc|b\.?\s?e\b|b\.?\s?a\b|m\.?\s?tech|m\.?\s?sc|m\.?\s?a\b|mba|bachelor|master|diploma|ph\.?\s?d)\b/i;
+
 function isSectionHeader(line) {
   const t = line.trim().replace(/[:\s]+$/, '');
   if (!t || t.length > 45) return false;
   if (BULLET_GLYPH.test(line)) return false;
   if (/[.!?,]$/.test(t)) return false;
   if (t.split(/\s+/).length > 5) return false;
+  if (LABELLED_CONTENT.test(line)) return false;
+  if (DEGREE_LINE.test(t)) return false;
   for (const [pattern, section] of SECTION_PATTERNS) {
     if (pattern.test(t)) return section;
   }
@@ -88,6 +169,41 @@ function mergeWrappedLines(lines) {
   return out;
 }
 
+/**
+ * Negated capability statements. Resumes really do say "No coding, web
+ * development, or technical background."
+ *
+ * Comma-splitting that sentence produces a standalone "web development" unit for
+ * a candidate who just told us they have none — a false positive that inflates
+ * precisely the candidates who should rank last. We drop the whole clause.
+ */
+const NEGATION_START = /^(no|not|none|never|without|lacking|zero)\b|^(no|limited|minimal)\s+(coding|technical|programming|software|development|professional)\b/i;
+
+/**
+ * Negation stated MID-sentence, which the start-anchored rule misses:
+ *
+ *   "(Note: no formal source control tooling used outside of zipping folders)"
+ *
+ * Embeddings match topic, not polarity — "source control tooling" scores as a
+ * strong match for a "version control" requirement no matter what precedes it.
+ * A candidate who explicitly disclaims a skill must not match on it.
+ *
+ * Deliberately narrow: a negation cue must be followed by a capability noun, so
+ * ordinary phrasing like "not only did I ..." does not trip it.
+ */
+const NEGATION_ANYWHERE = new RegExp(
+  '\\b(no|not|never|without|lacking|zero|nil)\\s+' +
+  '(formal\\s+|any\\s+|prior\\s+|professional\\s+|hands[- ]on\\s+|real\\s+|direct\\s+)?' +
+  '(experience|exposure|background|knowledge|training|familiarity|tooling|coding|programming' +
+  '|technical|software|development|source\\s+control|version\\s+control)\\b',
+  'i'
+);
+
+function isNegated(text) {
+  const t = text.trim();
+  return NEGATION_START.test(t) || NEGATION_ANYWHERE.test(t);
+}
+
 /** One line -> one or more claim strings, depending on section. */
 function splitIntoClaims(line, section) {
   let text = line.replace(BULLET_GLYPH, '').trim();
@@ -95,10 +211,21 @@ function splitIntoClaims(line, section) {
 
   if (section === 'skills') {
     text = text.replace(SKILL_LABEL, '');
-    // Skills are usually enumerations; split so each becomes its own unit.
+
+    // Sentence-split FIRST. A skills section often ends with a prose disclaimer,
+    // and enumerating "No coding, web development, or technical background"
+    // is what manufactures phantom skills. A negated sentence is kept whole and
+    // flagged rather than dropped, so the disclaimer stays visible in the parsed
+    // output while scoring skips it.
     return text
-      .split(/[,;|]|\s{2,}|[•▪●○◦‣∙]/)
-      .map((s) => s.trim())
+      .split(/(?<=[.!?])\s+/)
+      .flatMap((sentence) => {
+        const s = sentence.trim();
+        if (!s) return [];
+        if (isNegated(s)) return [s];             // keep whole, do not enumerate
+        return s.split(/[,;|]|\s{2,}|[•▪●○◦‣∙]/);
+      })
+      .map((s) => s.replace(/[.\s]+$/, '').trim())
       .filter(Boolean);
   }
 
@@ -154,11 +281,20 @@ function toEvidenceUnits(rawText, candidateId) {
   let section = 'other';
   let index = 0;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+
     const header = isSectionHeader(line);
     if (header) {
       section = header;
       continue; // the header itself is not evidence
+    }
+
+    // Unrecognised wording, but structurally a heading — e.g. "Things I Did".
+    // Skip the very first line, which is the candidate's name.
+    if (i > 0 && looksLikeHeader(line)) {
+      section = inferSectionFromFollowing(lines, i);
+      continue;
     }
 
     const claims = splitIntoClaims(line, section)
@@ -176,6 +312,7 @@ function toEvidenceUnits(rawText, candidateId) {
         normalized: normalize(text),   // literal, no alias expansion
         expanded: expandAliases(text), // literal + implied canonical terms
         section,
+        negated: isNegated(text),      // candidate is DISCLAIMING this, not claiming it
       });
     }
   }
@@ -201,6 +338,8 @@ function extractName(rawText, fallback) {
 }
 
 module.exports = {
+  looksLikeHeader,
+  inferSectionFromFollowing,
   toEvidenceUnits,
   extractName,
   mergeWrappedLines,

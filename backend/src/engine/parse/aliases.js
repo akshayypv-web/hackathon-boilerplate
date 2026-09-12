@@ -60,6 +60,82 @@ for (const [canonical, aliasList] of Object.entries(ALIASES)) {
 /** Longest phrases first, so "server-side javascript" wins over "javascript". */
 const SORTED_ALIASES = [...REVERSE.keys()].sort((a, b) => b.length - a.length);
 
+// ------------------------------------------------------------------
+// Typo tolerance
+//
+// Resumes contain misspellings: "Javscript", "Pyhton", "MongoDb", "Recieved".
+// An exact-match dictionary silently loses the skill, and the candidate loses
+// the requirement, with no error anywhere to tell us it happened.
+//
+// Bounded deliberately: only single-token aliases, only tokens of 5+ chars
+// (short ones produce nonsense matches — "java"/"jaba"/"js"), and candidates
+// are pre-filtered by first letter and length. Without those bounds this is
+// tokens x aliases on every unit and would dominate runtime across 7,600 units.
+// ------------------------------------------------------------------
+
+const SINGLE_TOKEN_ALIASES = SORTED_ALIASES.filter((a) => !a.includes(' ') && a.length >= 5);
+
+/** Aliases bucketed by first character, for cheap candidate lookup. */
+const BY_FIRST_CHAR = new Map();
+for (const a of SINGLE_TOKEN_ALIASES) {
+  const k = a[0];
+  if (!BY_FIRST_CHAR.has(k)) BY_FIRST_CHAR.set(k, []);
+  BY_FIRST_CHAR.get(k).push(a);
+}
+
+/**
+ * Damerau-Levenshtein (optimal string alignment), early-exit past max.
+ *
+ * Plain Levenshtein charges 2 for a transposition, which is wrong for our use:
+ * "Pyhton" and "Docekr" are adjacent-swap typos — by far the most common kind —
+ * and a budget of 1 would reject both. Counting a swap as a single edit catches
+ * them without widening the budget enough to create false matches.
+ */
+function editDistance(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prevPrev = null;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let v = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+      // adjacent transposition: "ht" <-> "th"
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        v = Math.min(v, prevPrev[j - 2] + 1);
+      }
+      cur[j] = v;
+      if (v < rowMin) rowMin = v;
+    }
+    if (rowMin > max) return max + 1; // whole row already too far
+    prevPrev = prev;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Nearest dictionary alias within a small edit budget, or null.
+ * Budget scales with length: 1 typo for short words, 2 for long ones.
+ */
+function fuzzyAlias(token) {
+  if (token.length < 5) return null;
+  if (REVERSE.has(token)) return null; // exact match, nothing to correct
+  const budget = token.length >= 8 ? 2 : 1;
+
+  let best = null;
+  let bestDist = budget + 1;
+  for (const cand of BY_FIRST_CHAR.get(token[0]) || []) {
+    if (Math.abs(cand.length - token.length) > budget) continue;
+    const d = editDistance(token, cand, budget);
+    if (d < bestDist) { bestDist = d; best = cand; }
+    if (bestDist === 1) break; // good enough
+  }
+  return bestDist <= budget ? best : null;
+}
+
 /**
  * Lowercase, strip punctuation that isn't part of a tech term, collapse whitespace.
  * Keeps '.', '+', '#' so "node.js", "c++", "c#" survive.
@@ -90,6 +166,15 @@ function expandAliases(text) {
       for (const canonical of REVERSE.get(alias)) {
         if (!padded.includes(` ${canonical} `)) found.add(canonical);
       }
+    }
+  }
+
+  // Second pass: misspelled skills. "Javscript" should still reach "javascript".
+  for (const token of base.split(' ')) {
+    const near = fuzzyAlias(token);
+    if (!near) continue;
+    for (const canonical of REVERSE.get(near)) {
+      if (!padded.includes(` ${canonical} `)) found.add(canonical);
     }
   }
 
