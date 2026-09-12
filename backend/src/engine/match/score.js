@@ -50,6 +50,13 @@ async function runPipeline(jd, candidates, opts = {}) {
   const alpha = opts.alpha != null ? opts.alpha : cfg.alpha;
   const mode = opts.mode || 'hybrid';
 
+  // Every threshold is either a per-call override or the module default.
+  // This is what makes /api/tune and the live slider work without touching cfg.
+  const gateThreshold        = opts.gateThreshold        != null ? opts.gateThreshold        : cfg.gateThreshold;
+  const gatePenaltyPerMiss   = opts.gatePenaltyPerMiss   != null ? opts.gatePenaltyPerMiss   : cfg.gatePenaltyPerMiss;
+  const satisfyThreshold     = opts.satisfyThreshold     != null ? opts.satisfyThreshold     : cfg.satisfyThreshold;
+  const matchBothThreshold   = opts.matchBothThreshold   != null ? opts.matchBothThreshold   : cfg.matchBothThreshold;
+
   if (!candidates.length) return [];
 
   // --- (0) Collect the whole pool of evidence units into a flat corpus.
@@ -151,11 +158,11 @@ async function runPipeline(jd, candidates, opts = {}) {
       const fusedZ = alpha * cell.lexicalNorm + (1 - alpha) * cell.semanticNorm;
       const fused = _sigmoid(fusedZ); // 0..1
 
-      const satisfied = fused >= cfg.satisfyThreshold;
+      const satisfied = fused >= satisfyThreshold;
 
       let matchedBy = 'none';
-      const lexOK = cell.lexicalNorm > cfg.matchBothThreshold;
-      const semOK = cell.semanticNorm > cfg.matchBothThreshold;
+      const lexOK = cell.lexicalNorm > matchBothThreshold;
+      const semOK = cell.semanticNorm > matchBothThreshold;
       if (lexOK && semOK) matchedBy = 'both';
       else if (semOK) matchedBy = 'semantic';
       else if (lexOK) matchedBy = 'lexical';
@@ -184,9 +191,9 @@ async function runPipeline(jd, candidates, opts = {}) {
         matchedBy,
       });
 
-      if (req.kind === 'MUST' && fused < cfg.gateThreshold) {
+      if (req.kind === 'MUST' && fused < gateThreshold) {
         missingMustHaves.push(req.id);
-        gatePenalty *= cfg.gatePenaltyPerMiss;
+        gatePenalty *= gatePenaltyPerMiss;
       }
     }
 

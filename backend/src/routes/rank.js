@@ -24,6 +24,7 @@
  */
 
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -34,6 +35,7 @@ const { runAblation } = require('../engine/match/ablate');
 const cfg = require('../engine/match/config');
 
 const RESUMES_DIR = path.join(__dirname, '..', '..', '..', 'data', 'resumes');
+const ABLATION_DISK_CACHE = path.join(__dirname, '..', 'engine', '.cache', 'ablation.json');
 
 const router = express.Router();
 
@@ -113,6 +115,18 @@ router.get('/health', async (req, res) => {
   });
 });
 
+// Which body fields count as tuning overrides. If ANY of these are present in
+// the request body, we bypass the mode-preset alpha and skip caching (fresh
+// compute per slider position). Everything else in cfg still applies unless
+// overridden the same way.
+const TUNABLE_KEYS = ['alpha', 'gateThreshold', 'gatePenaltyPerMiss', 'satisfyThreshold', 'matchBothThreshold'];
+
+function _extractOverrides(body) {
+  const out = {};
+  for (const k of TUNABLE_KEYS) if (body && body[k] != null) out[k] = Number(body[k]);
+  return out;
+}
+
 router.post('/rank', async (req, res) => {
   try {
     const modeParam = (req.query.mode || req.body?.mode || 'hybrid').toString();
@@ -122,16 +136,24 @@ router.post('/rank', async (req, res) => {
     }
 
     const jd = _resolveJd(req.body?.jd);
-    const key = `${_jdKey(jd)}:${modeParam}`;
+    const overrides = _extractOverrides(req.body);
+    const isTuned = Object.keys(overrides).length > 0;
 
-    if (_rankCache.has(key)) {
+    const key = `${_jdKey(jd)}:${modeParam}`;
+    if (!isTuned && _rankCache.has(key)) {
       return res.json(_rankCache.get(key));
     }
 
     const candidates = await _getCandidates();
-    const ranked = await runPipeline(jd, candidates, { alpha: validModes[modeParam], mode: modeParam });
+    const runOpts = {
+      alpha: overrides.alpha != null ? overrides.alpha : validModes[modeParam],
+      mode: modeParam,
+      ...overrides,
+    };
+    const ranked = await runPipeline(jd, candidates, runOpts);
     const result = _shapeResult(jd, ranked, modeParam);
-    _rankCache.set(key, result);
+    if (isTuned) result.meta.tuned = overrides;
+    if (!isTuned) _rankCache.set(key, result);
     res.json(result);
   } catch (err) {
     console.error('[rank] error:', err);
@@ -139,11 +161,49 @@ router.post('/rank', async (req, res) => {
   }
 });
 
+// Persistent tune: mutate cfg + clear result cache. Judges love this during
+// live demo — flip a slider on the frontend and every subsequent /api/rank
+// respects the new value. Returns the effective config for confirmation.
+router.post('/tune', (req, res) => {
+  const overrides = _extractOverrides(req.body);
+  if (!Object.keys(overrides).length) {
+    return res.status(400).json({ error: `body must include at least one of: ${TUNABLE_KEYS.join(', ')}` });
+  }
+  Object.assign(cfg, overrides);
+  _rankCache.clear();
+  _ablationCache.clear();
+  res.json({
+    ok: true,
+    applied: overrides,
+    config: {
+      alpha: cfg.alpha,
+      gateThreshold: cfg.gateThreshold,
+      gatePenaltyPerMiss: cfg.gatePenaltyPerMiss,
+      satisfyThreshold: cfg.satisfyThreshold,
+      matchBothThreshold: cfg.matchBothThreshold,
+    },
+  });
+});
+
 router.get('/ablation', async (req, res) => {
   try {
     const jd = jdFixture;
     const key = _jdKey(jd);
     if (_ablationCache.has(key)) return res.json(_ablationCache.get(key));
+
+    // Demo insurance: if precompute.js has written .cache/ablation.json for
+    // this jd, serve that directly. Server crashes stop being demo-lethal.
+    if (fs.existsSync(ABLATION_DISK_CACHE)) {
+      try {
+        const disk = JSON.parse(fs.readFileSync(ABLATION_DISK_CACHE, 'utf8'));
+        if (disk.jdKey === key) {
+          _ablationCache.set(key, disk);
+          return res.json(disk);
+        }
+      } catch (err) {
+        console.warn(`[ablation] disk cache unreadable: ${err.message}`);
+      }
+    }
 
     const candidates = await _getCandidates();
     const { rows, lexical, semantic, hybrid } = await runAblation(jd, candidates);
