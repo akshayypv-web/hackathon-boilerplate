@@ -155,8 +155,26 @@ Every figure in [PITCH.md](PITCH.md) comes from one of these:
 node backend/src/engine/match/runReal.js            # 18 resumes, 4-row ablation table
 node backend/src/engine/eval/validateRoles.js       # 220 labelled resumes, precision/purity
 node backend/src/engine/eval/tune.js                # the alpha and gate sweeps
+node backend/src/engine/eval/biasAudit.js           # institution-bias counterfactual
 node backend/src/engine/match/precompute.js         # write .cache/ablation.json (demo insurance)
 ```
+
+### Fairness
+
+`eval/biasAudit.js` holds each candidate fixed and changes **only** the institution on
+their degree line, then re-ranks. Same skills, same wording, different college — the score
+should not move.
+
+It moved by up to **26 points of 100** before this was fixed, and not because of prestige:
+institution names carry requirement keywords, so *"RV College of Engineering"* helped
+satisfy the *"degree in Computer Science or related"* must-have where *"PES University"*
+did not. Evidence units now carry a `scoredText` projection with the institution stripped
+— used by both BM25 and the embeddings — while `text` keeps the college for display. The
+largest swing is now **0.6 points**, which is pool z-normalisation rather than the college.
+
+The audit needs no agreement on which colleges are tier 1, tier 2 or tier 3: if swapping
+any college for any other changes nothing, the ranking is tier-blind by construction.
+Identity lines (name, email, phone, handle) are excluded from scoring for the same reason.
 
 Parse-quality report over any resume directory — the tool that matters when an unseen
 set arrives and you need to know within a minute which files parsed badly:
@@ -169,12 +187,13 @@ node backend/src/engine/parse/loadCandidates.js ./data/resumes --show cand_03
 
 Headline validation result, against a Junior Full Stack JD over the 220 labelled
 resumes: RELEVANT (n=59) mean rank **33.5**, 53 of 59 in the top quartile;
-IRRELEVANT (n=94) mean rank **162.7**, none in the top quartile;
-precision@top25% **96%**, purity@bottom25% **89%**.
+IRRELEVANT (n=94) mean rank **161.9**, none in the top quartile;
+precision@top25% **96%**, purity@bottom25% **87%**.
 
-Purity was 93% before identity lines were dropped from scored evidence; removing them
-moved two of 94 irrelevant resumes out of the bottom quartile. Precision and the
-relevant-candidate top-quartile count were unchanged.
+Purity was 93% before the two fairness fixes below (identity lines and institution names
+excluded from scoring). Both cost bottom-quartile purity; neither changed
+precision@top25% or the 53-of-59 relevant top-quartile count. Part of that lost purity
+was the engine ranking people on their contact line and their college.
 
 The one resume the validator reports as misplaced — `Python_Dev_B.docx` at rank 173 —
 is the engine being right and the label being wrong: that resume reads *"basic exposure
@@ -219,11 +238,10 @@ The CLI tools take the directory as an argument instead.
   "and" is deliberate — it preserves the ability to report *which* skill is missing — and
   the alternative (subset matching) wrongly merged "JavaScript and a frontend framework"
   into one requirement.
-- **Institution names are scored.** An education unit reads
-  `"B.E. Computer Science, RV College of Engineering, Bengaluru (2023-2027)"`, so the
-  college contributes signal. The degree and field are what the requirement aliases target,
-  but the institution is in the same unit and was left in rather than risk damaging the
-  education match.
+- **Pool z-normalisation makes scores pool-relative.** Adding or removing a resume shifts
+  every other score slightly, because each requirement is normalised across the pool. This
+  is deliberate — it is what creates score separation — but it means a score is only
+  meaningful against the pool it was computed in.
 - **The sweep tables in PITCH.md predate the identity-line change** below and should be
   re-run with `eval/tune.js` before being quoted.
 

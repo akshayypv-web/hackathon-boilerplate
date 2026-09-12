@@ -299,6 +299,50 @@ function isNoise(text, section) {
   return false;
 }
 
+/** Segments that name an institution rather than a qualification. */
+const INSTITUTION_WORD = /\b(University|College|Institute|Vidyapeetham|Vishwavidyalaya|Technical Board|Polytechnic|School)\b/i;
+
+/** Degree markers, used to locate the qualification within an education line. */
+const DEGREE_MARKER = /\b(B\.?\s?E\.?|B\.?\s?Tech|B\.?\s?Sc|B\.?\s?C\.?A|BBA|B\.?Com|BHM|M\.?\s?Tech|M\.?\s?Sc|MBA|MCA|Diploma|Bachelor|Master)\b/i;
+
+/**
+ * Remove the institution from an education line, keeping degree, field, dates
+ * and grades.
+ *
+ * The requirement is "pursuing a degree in Computer Science or related" — the
+ * college is not the qualification. Left in, it decided rankings: institution
+ * names carry requirement keywords, so "RV College of Engineering" helped
+ * satisfy the education must-have while "PES University" did not, and a
+ * counterfactual swap of the college alone moved one candidate 26 points of 100.
+ * That is institution bias whether or not it tracks anyone's tier list.
+ *
+ * The name stays in `text` so a recruiter still sees it; only the scored
+ * projection drops it. Returns null when no institution can be identified, so
+ * the caller leaves the line alone rather than mangling it.
+ */
+function stripInstitution(line) {
+  const segments = String(line).split(/\s*,\s*/);
+  if (segments.length < 2) return null;
+
+  const keep = [];
+  let dropped = 0;
+  segments.forEach((seg, idx) => {
+    const isInstitution =
+      INSTITUTION_WORD.test(seg) ||
+      // Acronym forms carry no keyword ("VIT Vellore", "MANIT Bhopal") and sit
+      // directly after the degree.
+      (idx === 1 && DEGREE_MARKER.test(segments[0]) && /[A-Z]{2,}/.test(seg));
+    if (!isInstitution) { keep.push(seg); return; }
+    // A trailing date or grade sharing the segment is not part of the name.
+    const tail = seg.match(/\((?:[^)]*)\)\s*.*$/);
+    if (tail) keep.push(tail[0]);
+    dropped += 1;
+  });
+
+  if (!dropped) return null;
+  return keep.join(', ').replace(/\s{2,}/g, ' ').replace(/(^[,\s]+|[,\s]+$)/g, '');
+}
+
 /**
  * Long prose blocks match everything weakly and nothing precisely, because B
  * scores by best-matching unit. Split summaries into sentences so each claim
@@ -374,13 +418,19 @@ function toEvidenceUnits(rawText, candidateId) {
       const text = claim.length > MAX_LEN ? `${claim.slice(0, MAX_LEN).trim()}…` : claim;
       if (isNoise(text, section)) continue;
 
+      // Education lines are scored on the qualification, not the institution.
+      // `text` keeps the college for display; everything scored comes from
+      // `scoredText`.
+      const scoredText = (section === 'education' && stripInstitution(text)) || text;
+
       index += 1;
       units.push({
         id: `${candidateId}::ev_${String(index).padStart(3, '0')}`,
         candidateId,
         text,
-        normalized: normalize(text),   // literal, no alias expansion
-        expanded: expandAliases(text), // literal + implied canonical terms
+        scoredText,
+        normalized: normalize(scoredText),   // literal, no alias expansion
+        expanded: expandAliases(scoredText), // literal + implied canonical terms
         section,
         negated: isNegated(text),      // candidate is DISCLAIMING this, not claiming it
       });

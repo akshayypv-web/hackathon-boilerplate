@@ -84,7 +84,10 @@ async function runPipeline(jd, candidates, opts = {}) {
   //         Requirement query = "text | alias1 alias2 ..." so aliases nudge
   //         the semantic similarity too, not just BM25.
   const reqQueries = jd.requirements.map(r => `${r.text} | ${(r.aliases || []).join(' ')}`);
-  const evTexts = allEvidence.map(e => e.text);
+  // scoredText is the fairness-scrubbed projection of the unit — identical to
+  // .text except on education lines, where the institution is removed so the
+  // college cannot influence the ranking. .text stays the recruiter-facing quote.
+  const evTexts = allEvidence.map(e => e.scoredText || e.text);
 
   const [reqEmbeds, evEmbeds] = await Promise.all([
     embedAll(reqQueries),

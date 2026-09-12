@@ -6,6 +6,7 @@ Every number here is reproducible:
 node backend/src/engine/match/runReal.js          # 18 resumes, 4-row ablation
 node backend/src/engine/eval/validateRoles.js     # 220 labelled resumes
 node backend/src/engine/eval/tune.js              # the parameter sweeps
+node backend/src/engine/eval/biasAudit.js         # institution-bias counterfactual
 ```
 
 > The alpha and gate sweep tables below were measured before identity lines were removed
@@ -119,13 +120,36 @@ The organisers' 220 training resumes have their target role in the filename, so 
 labels. Against a Junior Full Stack JD:
 
 - RELEVANT (n=59): mean rank **33.5**, **53 of 59** in the top quartile
-- IRRELEVANT (n=94): mean rank **162.7**, **0 of 94** in the top quartile
-- precision@top25% **96%**, purity@bottom25% **89%**
+- IRRELEVANT (n=94): mean rank **161.9**, **0 of 94** in the top quartile
+- precision@top25% **96%**, purity@bottom25% **87%**
 
-*(Purity was 93% until we stopped scoring identity lines — name, email, phone and handle
-were evidence units, so a contact line could satisfy a requirement and be quoted as the
-proof. Dropping them moved two of 94 irrelevant resumes out of the bottom quartile.
-Precision and the relevant top-quartile count did not move. We took the four points.)*
+*(Purity was 93% before two fairness fixes — see the bias question below. Both cost
+bottom-quartile purity and neither moved precision@top25% or the 53-of-59 relevant
+top-quartile count. We took the trade deliberately: some of that purity was the engine
+ranking people on their contact line and their college.)*
+
+**"How do you know your ranking isn't biased?"**
+
+We tested it counterfactually rather than asserting it. `eval/biasAudit.js` holds a
+candidate completely fixed — same skills, same projects, same wording — and changes only
+the institution on the degree line, then re-ranks. Swapping IIT Bombay for an unranked
+local college should move nothing.
+
+It moved a lot. The worst case was **26 points of 100**, and 16 of 18 candidates shifted.
+
+The cause was not prestige, which is what makes it worth telling: institution names carry
+requirement keywords. "RV College of **Engineering**" was helping satisfy the
+*"degree in Computer Science or related"* must-have, while "PES University" was not. The
+engine was rewarding candidates whose college name happened to contain the right word.
+
+Evidence units now carry a `scoredText` projection with the institution removed, used for
+both BM25 and the embeddings, while the recruiter-facing quote keeps the college. Re-run
+the audit and the largest swing is **0.6 points** — and that residual is pool
+z-normalisation shifting when every resume changes at once, not the college.
+
+This is also the honest answer to tier lists: we never had to agree on which colleges are
+tier 1. If swapping any college for any other moves nothing, the ranking is tier-blind by
+construction.
 
 **"Your validator reports a misplacement at rank 173."**
 
