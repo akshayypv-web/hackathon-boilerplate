@@ -20,12 +20,20 @@ const { normalize, expandAliases } = require('./aliases');
  * A tight regex silently dumps those whole sections into "other" and leaves the
  * heading itself sitting in the index as a bogus evidence unit.
  */
+/**
+ * ORDER IS SIGNIFICANT — first match wins.
+ *
+ * "PROFESSIONAL SUMMARY" contains both "professional" and "summary". With the
+ * experience pattern first it is classified as experience and the candidate's
+ * summary prose lands in the wrong section, so summary is tested first.
+ * Likewise "Academic Projects" must reach the projects rule before education.
+ */
 const SECTION_PATTERNS = [
-  [/experience|employment|work\s+(history|background)|internships?|professional|career|positions?\s+held|journey|roles?/i, 'experience'],
-  [/projects?|portfolio|personal\s+(work|project)|side\s+project|things\s+i\s+(did|built|made)|what\s+i\s+built|builds?/i, 'projects'],
-  [/^(technical\s+|core\s+|key\s+|relevant\s+)?skills?|technolog|competenc|expertise|proficienc|^tools|tech\s+stack/i, 'skills'],
-  [/education|academic|qualification|schooling|coursework|degrees?/i, 'education'],
   [/summary|objective|profile|^about|introduction|overview/i, 'other'],
+  [/^(technical\s+|core\s+|key\s+|relevant\s+)?skills?|technolog|competenc|expertise|proficienc|^tools|tech\s+stack/i, 'skills'],
+  [/projects?|portfolio|personal\s+(work|project)|side\s+project|things\s+i\s+(did|built|made)|what\s+i\s+built|builds?/i, 'projects'],
+  [/experience|employment|work\s+(history|background)|internships?|professional|career|positions?\s+held|journey|roles?/i, 'experience'],
+  [/education|academic|qualification|schooling|coursework|degrees?/i, 'education'],
   [/certification|awards?|achievement|publication|activities|extracurricular|interests?|hobbies|languages|references|volunteer/i, 'other'],
 ];
 
@@ -44,6 +52,7 @@ function looksLikeHeader(line) {
   if (/[@|]|https?:\/\//.test(t)) return false;        // contact / link lines
   if (/\d{4}/.test(t)) return false;                    // "Habit Tracker -- Jan 2023"
   if (!/^[A-Z]/.test(t)) return false;                  // headings start capitalised
+  if (LABELLED_CONTENT.test(line)) return false;        // "Languages: Python, SQL"
   return true;
 }
 
@@ -96,12 +105,23 @@ const MIN_LEN = { skills: 2, experience: 12, projects: 12, education: 8, other: 
 
 const MAX_LEN = 300;
 
+/**
+ * A label with content after it is data, not a heading.
+ *
+ * "Languages: Python, SQL, C++" matched the spoken-languages rule and flipped the
+ * section to "other" right after a real Skills heading, silently costing 55 of
+ * 220 resumes their entire skills section. A heading never carries a populated
+ * value, so a colon followed by two or more words disqualifies the line.
+ */
+const LABELLED_CONTENT = /:\s*\S+(\s+|,)\S+/;
+
 function isSectionHeader(line) {
   const t = line.trim().replace(/[:\s]+$/, '');
   if (!t || t.length > 45) return false;
   if (BULLET_GLYPH.test(line)) return false;
   if (/[.!?,]$/.test(t)) return false;
   if (t.split(/\s+/).length > 5) return false;
+  if (LABELLED_CONTENT.test(line)) return false;
   for (const [pattern, section] of SECTION_PATTERNS) {
     if (pattern.test(t)) return section;
   }

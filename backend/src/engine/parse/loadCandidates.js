@@ -12,7 +12,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { extractText, listPdfs } = require('./pdf');
+const { extractAny, listResumes } = require('./extract');
 const { toEvidenceUnits, extractName } = require('./evidence');
 const { detectSkills } = require('./aliases');
 const { validateCandidate } = require('../contract');
@@ -22,23 +22,25 @@ const { validateCandidate } = require('../contract');
  * @returns {Promise<import('../contract').Candidate[]>}
  */
 async function loadFromDir(dirPath) {
-  const files = listPdfs(dirPath);
+  const files = listResumes(dirPath);
   if (!files.length) {
-    console.warn(`[load] no PDFs found in ${dirPath}`);
+    console.warn(`[load] no resume files found in ${dirPath}`);
     return [];
   }
 
   const candidates = [];
+  const width = String(files.length).length;
   for (let i = 0; i < files.length; i += 1) {
     const file = files[i];
-    const id = `cand_${String(i + 1).padStart(2, '0')}`;
-    const { text, ok } = await extractText(file);
-    const base = path.basename(file, '.pdf');
+    const id = `cand_${String(i + 1).padStart(Math.max(width, 2), '0')}`;
+    const { text, ok, format } = await extractAny(file);
+    const base = path.basename(file, path.extname(file));
 
     const candidate = {
       id,
       name: ok ? extractName(text, base) : base,
       sourceFile: path.basename(file),
+      sourceFormat: format,
       rawText: text,
       evidence: toEvidenceUnits(text, id),
       skillsDeclared: detectSkills(text),
