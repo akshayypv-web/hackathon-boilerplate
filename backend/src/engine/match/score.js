@@ -107,6 +107,8 @@ async function runPipeline(jd, candidates, opts = {}) {
       let lexBestId = null;
       let semBest = -Infinity;
       let semBestId = null;
+      const traceLex = opts.trace ? [] : null;
+      const traceSem = opts.trace ? [] : null;
 
       for (const ev of cand.evidence) {
         const lex = bm25Score(bm25Index, queryTokens, ev.id);
@@ -115,16 +117,29 @@ async function runPipeline(jd, candidates, opts = {}) {
         const evEmb = evEmbedById.get(ev.id);
         const sem = evEmb ? cosine(reqEmb, evEmb) : 0;
         if (sem > semBest) { semBest = sem; semBestId = ev.id; }
+
+        if (opts.trace) {
+          traceLex.push({ evidenceId: ev.id, section: ev.section, rawScore: lex });
+          traceSem.push({ evidenceId: ev.id, section: ev.section, rawScore: sem });
+        }
       }
       // If a candidate has zero evidence, default to 0 (not -Infinity).
       if (lexBest === -Infinity) lexBest = 0;
       if (semBest === -Infinity) semBest = 0;
+
+      // Trim traces to the top 5 per side to keep response size sane.
+      if (opts.trace) {
+        traceLex.sort((a, b) => b.rawScore - a.rawScore);
+        traceSem.sort((a, b) => b.rawScore - a.rawScore);
+      }
 
       matrix[ri].push({
         lexicalRaw: lexBest,
         semanticRaw: semBest,
         lexicalEvId: lexBestId,
         semanticEvId: semBestId,
+        traceLex: opts.trace ? traceLex.slice(0, 5) : null,
+        traceSem: opts.trace ? traceSem.slice(0, 5) : null,
       });
     }
   }
@@ -177,7 +192,7 @@ async function runPipeline(jd, candidates, opts = {}) {
 
       const citedText = cited && evById.get(cited) ? evById.get(cited).text : '';
 
-      reqScores.push({
+      const rs = {
         requirementId: req.id,
         candidateId: cand.id,
         lexicalRaw: cell.lexicalRaw,
@@ -189,7 +204,16 @@ async function runPipeline(jd, candidates, opts = {}) {
         evidenceId: cited,
         evidenceText: citedText,
         matchedBy,
-      });
+      };
+      // Audit trail for the "click any cell" trace feature.
+      if (opts.trace) {
+        const evText = (evId) => (evId && evById.get(evId) ? evById.get(evId).text : '');
+        rs.trace = {
+          lexical: cell.traceLex.map(t => ({ ...t, text: evText(t.evidenceId) })),
+          semantic: cell.traceSem.map(t => ({ ...t, text: evText(t.evidenceId) })),
+        };
+      }
+      reqScores.push(rs);
 
       if (req.kind === 'MUST' && fused < gateThreshold) {
         missingMustHaves.push(req.id);
@@ -232,6 +256,39 @@ async function runPipeline(jd, candidates, opts = {}) {
 
   candidateResults.sort((a, b) => b.finalScore - a.finalScore);
   candidateResults.forEach((c, i) => { c.rank = i + 1; });
+
+  // --- "Why not #1?" — for each non-top candidate, find the requirement
+  //     where they trail the top by the most. Gap is on the 0..1 fused scale.
+  if (candidateResults.length > 1) {
+    const top = candidateResults[0];
+    const topFusedByReq = new Map(top.requirementScores.map(rs => [rs.requirementId, rs.fused]));
+    for (const c of candidateResults.slice(1)) {
+      let bestGap = -Infinity;
+      let bestReqId = null;
+      let bestReqText = '';
+      for (const rs of c.requirementScores) {
+        const gap = (topFusedByReq.get(rs.requirementId) || 0) - rs.fused;
+        if (gap > bestGap) {
+          bestGap = gap;
+          bestReqId = rs.requirementId;
+          const req = jd.requirements.find(r => r.id === bestReqId);
+          bestReqText = req ? req.text : '';
+        }
+      }
+      if (bestReqId && bestGap > 0) {
+        c.whyNotTop = {
+          requirementId: bestReqId,
+          requirementText: bestReqText,
+          gap: Math.round(bestGap * 100) / 100,
+          topScore: Math.round((topFusedByReq.get(bestReqId) || 0) * 100) / 100,
+          candidateScore: Math.round(((topFusedByReq.get(bestReqId) || 0) - bestGap) * 100) / 100,
+        };
+      } else {
+        c.whyNotTop = null;
+      }
+    }
+    top.whyNotTop = null;
+  }
 
   return candidateResults;
 }

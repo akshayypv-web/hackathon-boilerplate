@@ -1,0 +1,26 @@
+{
+  "id": "ml_engineer",
+  "title": "Machine Learning Engineer",
+  "company": "TechNova AI",
+  "rawText": "TechNova AI is hiring a Machine Learning Engineer to build and ship production ML systems.\n\nWhat we're looking for:\n- Strong Python and applied machine learning fundamentals\n- Hands-on experience training deep learning models with PyTorch or TensorFlow\n- Comfort with data pipelines and SQL / dataframes\n- Practical experience deploying models behind APIs\n- Familiarity with cloud platforms and containerisation\n\nNice to have:\n- Experience with LLMs, RAG, or embeddings\n- MLOps tooling (MLflow, Weights & Biases)\n- Kaggle / research publications",
+  "requirements": [
+    { "id": "req_01", "text": "Strong Python programming", "kind": "MUST", "category": "skill",
+      "aliases": ["python", "pandas", "numpy", "scikit-learn", "sklearn"], "weight": 1.2 },
+    { "id": "req_02", "text": "Deep learning with PyTorch or TensorFlow", "kind": "MUST", "category": "skill",
+      "aliases": ["pytorch", "tensorflow", "torch", "keras", "deep learning", "cnn", "neural network"], "weight": 1.2 },
+    { "id": "req_03", "text": "Applied machine learning fundamentals", "kind": "MUST", "category": "skill",
+      "aliases": ["machine learning", "ml", "classification", "regression", "clustering", "model training"], "weight": 1.0 },
+    { "id": "req_04", "text": "Data pipelines and SQL", "kind": "MUST", "category": "skill",
+      "aliases": ["sql", "postgres", "postgresql", "mysql", "etl", "airflow", "dataframe", "pandas"], "weight": 0.9 },
+    { "id": "req_05", "text": "Deploying models behind APIs", "kind": "MUST", "category": "skill",
+      "aliases": ["fastapi", "flask", "rest", "api", "endpoint", "inference", "serving"], "weight": 0.9 },
+    { "id": "req_06", "text": "Cloud platforms and containerisation", "kind": "NICE", "category": "skill",
+      "aliases": ["aws", "gcp", "azure", "docker", "kubernetes", "sagemaker"], "weight": 0.6 },
+    { "id": "req_07", "text": "Experience with LLMs, RAG, or embeddings", "kind": "NICE", "category": "skill",
+      "aliases": ["llm", "gpt", "rag", "retrieval", "embedding", "vector database", "langchain"], "weight": 0.5 },
+    { "id": "req_08", "text": "MLOps tooling", "kind": "NICE", "category": "skill",
+      "aliases": ["mlflow", "weights and biases", "wandb", "dvc", "mlops"], "weight": 0.4 },
+    { "id": "req_09", "text": "Computer Science or related degree", "kind": "MUST", "category": "education",
+      "aliases": ["computer science", "cse", "b.tech", "btech", "engineering", "statistics"], "weight": 0.6 }
+  ]
+}

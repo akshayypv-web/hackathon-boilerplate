@@ -1,0 +1,26 @@
+{
+  "id": "product_manager",
+  "title": "Product Manager Intern",
+  "company": "TechNova Product",
+  "rawText": "TechNova Product is looking for a Product Manager Intern to help shape our next product bets.\n\nWhat we're looking for:\n- Strong analytical thinking and comfort with data\n- User research or customer interview experience\n- Ability to write clear product specs and PRDs\n- Working knowledge of software engineering (you'll partner with engineers daily)\n- Communication and stakeholder management\n\nNice to have:\n- Prior product internship or founder experience\n- Familiarity with SQL and product analytics tools\n- Design sensibility (Figma)",
+  "requirements": [
+    { "id": "req_01", "text": "Analytical thinking with data", "kind": "MUST", "category": "skill",
+      "aliases": ["analytics", "data", "metrics", "kpi", "insight", "sql", "excel"], "weight": 1.0 },
+    { "id": "req_02", "text": "User research or customer interviews", "kind": "MUST", "category": "skill",
+      "aliases": ["user research", "customer interview", "user testing", "usability", "personas"], "weight": 1.0 },
+    { "id": "req_03", "text": "Product specs and PRDs", "kind": "MUST", "category": "skill",
+      "aliases": ["prd", "product requirement", "spec", "roadmap", "product doc", "writing"], "weight": 0.9 },
+    { "id": "req_04", "text": "Working knowledge of software engineering", "kind": "MUST", "category": "skill",
+      "aliases": ["software", "engineering", "development", "api", "backend", "frontend", "javascript", "python"], "weight": 0.9 },
+    { "id": "req_05", "text": "Communication and stakeholder management", "kind": "MUST", "category": "soft",
+      "aliases": ["communication", "stakeholder", "presentation", "leadership", "cross functional"], "weight": 0.7 },
+    { "id": "req_06", "text": "Prior product or founder experience", "kind": "NICE", "category": "experience",
+      "aliases": ["product manager", "product intern", "founder", "startup", "pm intern"], "weight": 0.5 },
+    { "id": "req_07", "text": "Product analytics tools", "kind": "NICE", "category": "skill",
+      "aliases": ["amplitude", "mixpanel", "heap", "google analytics", "posthog"], "weight": 0.4 },
+    { "id": "req_08", "text": "Design sensibility", "kind": "NICE", "category": "skill",
+      "aliases": ["figma", "design", "ux", "ui", "wireframe", "prototype"], "weight": 0.4 },
+    { "id": "req_09", "text": "Undergraduate degree", "kind": "MUST", "category": "education",
+      "aliases": ["b.tech", "btech", "bachelor", "engineering", "business", "management", "economics"], "weight": 0.5 }
+  ]
+}

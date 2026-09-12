@@ -36,6 +36,26 @@ const cfg = require('../engine/match/config');
 
 const RESUMES_DIR = path.join(__dirname, '..', '..', '..', 'data', 'resumes');
 const ABLATION_DISK_CACHE = path.join(__dirname, '..', 'engine', '.cache', 'ablation.json');
+const JD_TEMPLATES_DIR = path.join(__dirname, '..', 'engine', 'fixtures', 'jd_templates');
+
+// Preload every JD template on boot. Also register the fixture as
+// "full_stack" so the same UI can list all five.
+function _loadJdTemplates() {
+  const templates = {
+    full_stack: { ...jdFixture, id: 'full_stack' },
+  };
+  try {
+    for (const fname of fs.readdirSync(JD_TEMPLATES_DIR)) {
+      if (!fname.endsWith('.json')) continue;
+      const jd = JSON.parse(fs.readFileSync(path.join(JD_TEMPLATES_DIR, fname), 'utf8'));
+      if (jd && jd.id) templates[jd.id] = jd;
+    }
+  } catch (err) {
+    console.warn(`[jd-templates] load failed: ${err.message}`);
+  }
+  return templates;
+}
+const JD_TEMPLATES = _loadJdTemplates();
 
 const router = express.Router();
 
@@ -62,19 +82,19 @@ function _getCandidates() {
   return _candidatesPromise;
 }
 
-function _resolveJd(bodyJd) {
-  if (!bodyJd) return jdFixture;
-  // If C's decompose is available and jd is a string, decompose it.
-  if (typeof bodyJd === 'string') {
+function _resolveJd(body) {
+  // Precedence: explicit jd object > jdId lookup > raw string > fixture default.
+  if (body?.jd && typeof body.jd === 'object') return body.jd;
+  if (body?.jdId && JD_TEMPLATES[body.jdId]) return JD_TEMPLATES[body.jdId];
+  if (typeof body?.jd === 'string') {
     try {
       const { decompose } = require('../engine/jd/decompose');
-      return decompose(bodyJd);
+      return decompose(body.jd);
     } catch (err) {
-      // decompose not shipped yet — fall back to fixture with a warning header
       return { ...jdFixture, _warning: 'jd/decompose.js not shipped; used fixture JD' };
     }
   }
-  return bodyJd;
+  return jdFixture;
 }
 
 function _shapeResult(jd, ranked, mode) {
@@ -98,6 +118,25 @@ function _shapeResult(jd, ranked, mode) {
 }
 
 // ---- routes ----------------------------------------------------------------
+
+// JD template library. Charvis binds these to a dropdown; picking one calls
+// POST /api/rank with { jdId } and the whole pool re-ranks against a totally
+// different role. Same 18 resumes, different rankings — great demo moment.
+router.get('/jds', (req, res) => {
+  const list = Object.values(JD_TEMPLATES).map(jd => ({
+    id: jd.id,
+    title: jd.title,
+    company: jd.company,
+    reqCount: (jd.requirements || []).length,
+  }));
+  res.json({ templates: list });
+});
+
+router.get('/jds/:id', (req, res) => {
+  const jd = JD_TEMPLATES[req.params.id];
+  if (!jd) return res.status(404).json({ error: `no template "${req.params.id}"` });
+  res.json(jd);
+});
 
 router.get('/health', async (req, res) => {
   const loaded = _candidatesPromise !== null;
@@ -135,11 +174,12 @@ router.post('/rank', async (req, res) => {
       return res.status(400).json({ error: `bad mode "${modeParam}" (want hybrid|lexical_only|semantic_only)` });
     }
 
-    const jd = _resolveJd(req.body?.jd);
+    const jd = _resolveJd(req.body);
     const overrides = _extractOverrides(req.body);
     const isTuned = Object.keys(overrides).length > 0;
+    const traceOn = String(req.query.trace || req.body?.trace || '') === '1' || req.body?.trace === true;
 
-    const key = `${_jdKey(jd)}:${modeParam}`;
+    const key = `${_jdKey(jd)}:${modeParam}${traceOn ? ':trace' : ''}`;
     if (!isTuned && _rankCache.has(key)) {
       return res.json(_rankCache.get(key));
     }
@@ -148,11 +188,13 @@ router.post('/rank', async (req, res) => {
     const runOpts = {
       alpha: overrides.alpha != null ? overrides.alpha : validModes[modeParam],
       mode: modeParam,
+      trace: traceOn,
       ...overrides,
     };
     const ranked = await runPipeline(jd, candidates, runOpts);
     const result = _shapeResult(jd, ranked, modeParam);
     if (isTuned) result.meta.tuned = overrides;
+    if (traceOn) result.meta.trace = true;
     if (!isTuned) _rankCache.set(key, result);
     res.json(result);
   } catch (err) {
