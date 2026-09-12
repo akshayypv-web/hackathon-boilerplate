@@ -37,7 +37,11 @@ const { chat } = require('../engine/explain/chat');
 const { runAblation } = require('../engine/match/ablate');
 const cfg = require('../engine/match/config');
 
-const RESUMES_DIR = path.join(__dirname, '..', '..', '..', 'data', 'resumes');
+// Overridable so an unseen evaluation set can be ranked without a code edit:
+//   RESUMES_DIR=./data/testing_dataset/resumes npm run dev
+const RESUMES_DIR = process.env.RESUMES_DIR
+  ? path.resolve(process.env.RESUMES_DIR)
+  : path.join(__dirname, '..', '..', '..', 'data', 'resumes');
 const ABLATION_DISK_CACHE = path.join(__dirname, '..', 'engine', '.cache', 'ablation.json');
 const JD_TEMPLATES_DIR = path.join(__dirname, '..', 'engine', 'fixtures', 'jd_templates');
 

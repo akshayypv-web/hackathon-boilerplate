@@ -62,6 +62,8 @@ backend/
       jd/decompose.js         JD text -> atomic Requirement[] (rules-based, offline)
       match/                  bm25.js · embed.js · score.js · ablate.js · config.js
       explain/explain.js      top-3 explanations, every claim quoting a real line
+      explain/bias.js         JD bias flagging (bonus 1)
+      explain/chat.js         recruiter chat — compare / whoHas / whyNot / search (bonus 2)
       eval/                   tune.js (parameter sweeps) · validateRoles.js (ground truth)
       fixtures/               TechNova JD fixture + 4 other JD templates
 frontend/
@@ -135,7 +137,7 @@ NEXT_PUBLIC_API_URL=http://localhost:5000
 | GET | `/api/jds` | Lists the 5 JD templates. |
 | GET | `/api/jds/:id` | One JD template. Pass its `id` to `/api/rank` as `jdId` to re-rank the same pool against a different role. |
 | GET | `/api/health` | Pool size, whether resumes loaded, which modes are cached. |
-| POST | `/api/chat` | Recruiter chat (bonus 2). Body: `{ question, pipelineResult }`. Routes "why is X above Y" to a requirement-matrix diff, "who knows X" to a lexically-corroborated embedding search, anything else to open retrieval. Returns `{ text, citedCandidates, quotes }`, every claim quoting a real resume line. |
+| POST | `/api/chat` | Recruiter chat (bonus 2). Body: `{ question, pipelineResult }`. Four intents, most specific first: `compare` ("why is Priya above Kabir"), `whoHas` ("who knows AWS"), `whyNot` ("why isn't Meera in the top 3"), and `search` for anything else. Returns `{ text, citedCandidates, intent }`. Extractive, not generative — every claim quotes a resume line verbatim. |
 | POST | `/api/reset-cache` | Clears in-memory result caches. Never touches the embedding cache. |
 | GET | `/api/hello`, POST `/api/echo` | Boilerplate leftovers. |
 | GET/POST | `/api/test-db` | Supabase connectivity check. Returns 503 if no `.env`. |
