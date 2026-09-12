@@ -19,6 +19,22 @@
 
 ---
 
+## Bonus features (all three ship, worth 10%)
+
+From the problem doc. Owner map is fixed — do not renegotiate.
+
+| # | Feature | Owner | File |
+|---|---------|-------|------|
+| 1 | JD bias flagging (gendered, age proxy, elitism, overreach, vague filler) | **C — Achyuth** | `backend/src/engine/explain/bias.js` |
+| 2 | Recruiter chat — "why is X above Y", "who has AWS", "candidates with startup experience" | **C — Achyuth** | `backend/src/engine/explain/chat.js` |
+| 3 | Messy resume handling — varied headers, multi-column layout, typo-tolerant skill match, weird date formats | **A — Akshay** | inside `backend/src/engine/parse/*` |
+
+Bonus 2 is broader than the existing `compare.js` scope: it's a small RAG endpoint that takes a free-text question plus the current `PipelineResult`, retrieves the top-K evidence units by embedding cosine (reuse `match/embed.js` — no new model), and returns a grounded answer that cites candidate names + quotes actual resume lines. `compare.js` becomes a special-case shortcut called by the chat when the question matches "why is X above Y".
+
+**Hard gate:** bonuses only ship if the core pipeline is green by 1:45. Do not start bonus code before then.
+
+---
+
 ## Rubric (this is the spec, build to it)
 
 | Criterion | Weight | Owner |
@@ -166,6 +182,26 @@ BUILD THESE FILES:
 
 4. backend/src/engine/parse/loadCandidates.js
    - loadFromDir(dirPath) -> Promise<Candidate[]>, sorted by filename, ids cand_01..cand_NN.
+
+=== BONUS (Bonus 3 from the problem doc — messy resume robustness): ===
+
+Only start this once the four core files above work end-to-end on the fixtures. Add:
+- Fuzzy header detection: accept "Technical Skills", "Skillset", "Tech Stack" as `skills`;
+  "Work Experience", "Employment", "Professional Experience" as `experience`, etc. Case-insensitive.
+- Multi-column PDF handling: if pdf-parse output has wildly uneven line lengths and lots of
+  short fragments, fall back to `pdf-parse` with `pagerender` reading `getTextContent()` and
+  group `items` by x-coordinate ranges before joining. Keep this behind a flag; do not slow
+  down the happy path.
+- Date normaliser (`parse/dates.js`): `normaliseDateRange(str)` accepts "Jan 2020 - Present",
+  "01/2020 - 03/2022", "2020-2023", "Since 2021", etc. Returns `{ start, end }` in ISO YYYY-MM
+  or `null` where unknown. Attach `dateRange` on each EvidenceUnit when its section is "experience".
+- Typo tolerance: when a skill token in a resume is within edit distance 1 of a canonical alias
+  in `aliases.js`, treat it as a match. Cheap Levenshtein, cap candidate list at the known skill
+  set — do not scan every token pair.
+- Log a per-candidate parse quality signal (`parseWarnings: string[]`) so D can flag low-quality
+  parses in the UI.
+
+Still no LLM. Everything above stays deterministic.
 
 CRITICAL CONSTRAINTS:
 - **NO EXTERNAL LLM MAY TOUCH RESUME CONTENT.** Team rule. All extraction is deterministic:
@@ -377,6 +413,27 @@ backend/src/engine/explain/compare.js
   This is nearly free: diff their requirementScores arrays, find the requirements with the largest
   fused-score gap, and narrate those with citations from both sides.
 
+backend/src/engine/explain/chat.js  (BONUS 2 FROM THE PROBLEM DOC — recruiter chat)
+  answer(question, pipelineResult) -> { text, citedCandidates: [candidateId], quotes: [evidenceId] }
+  A thin RAG layer over the ranked pool, no new model — reuse Person B's embed.js.
+
+  Question-routing:
+    - If the question matches /why is (\w+) (above|higher|better|ranked over) (\w+)/i, delegate to
+      compare.js and wrap the result.
+    - If it matches /who (has|knows|uses) (.+)/i, embed the skill phrase, cosine-rank all evidence
+      units, return top candidates whose top evidence exceeds threshold, with quotes.
+    - Otherwise: embed the raw question, cosine-rank all evidence units across the pool,
+      take the top-K (K=6) units with their candidate names + scores, and format a grounded answer.
+
+  HARD rules for this file, mirroring the team boundary:
+    - Every claim must cite a real evidenceText — never invent, never paraphrase away the quote.
+    - No LLM number ever influences ranking. If you use an LLM to prettify the final sentence,
+      it receives only the retrieved facts (candidate names, quotes, scores) and returns prose,
+      never a number. Deterministic template output must work end-to-end before the LLM pass
+      is added.
+    - Do not send raw resume text to an LLM — retrieved evidenceText snippets are OK because
+      they are already parsed, structured units.
+
 TEST DATA: backend/src/engine/fixtures/jd.fixture.json and candidates.fixture.json.
 Build Part 1 and Part 2 fully before touching Part 3.
 ```
@@ -422,6 +479,9 @@ BUILD:
    Accept ?mode=hybrid|lexical_only|semantic_only. Return the shape above.
    Serve from a cached JSON file if one exists, so the demo cannot fail on a cold start.
 
+   Also add `POST /api/chat` — body `{ question, pipelineResult }`, delegates to
+   `explain/chat.js` (Person C, bonus 2). Returns `{ text, citedCandidates, quotes }`.
+
 2. Frontend page with EXACTLY these four things and nothing else:
    a) Ranked table: rank, name, score (0-100), a bar, and a red badge when missingMustHaves is
       non-empty. All 18 rows visible without scrolling if possible.
@@ -432,7 +492,11 @@ BUILD:
       does real work. Make it obvious.
    c) Ablation view: three-column table comparing each candidate's rank under keyword-only,
       semantic-only, and hybrid, with the rank delta highlighted.
-   d) A small panel listing JD bias flags.
+   d) A small panel listing JD bias flags (BONUS 1).
+   e) A chat panel (BONUS 2): single input box, sends question to `POST /api/chat` with the
+      current pipeline result, renders the answer with clickable candidate-name chips and
+      quoted evidence text. Must handle: "why is X above Y", "who knows AWS", "candidates with
+      startup experience". Chat history in-memory only, no persistence.
 
    Dense and readable beats pretty. No charts, no animation, no auth, no file upload, no dark-mode
    toggle. Judges score "working end-to-end demo" at only 15% — the engine is 55%.
