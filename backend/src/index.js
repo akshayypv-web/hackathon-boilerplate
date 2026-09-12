@@ -20,6 +20,9 @@ app.post('/api/echo', (req, res) => {
   res.json({ received: text || 'nothing sent' });
 });
 
+const { registerRankRoutes } = require('./routes/rank');
+registerRankRoutes(app);
+
 const { getSupabase, isConfigured } = require('./supabaseClient');
 
 // Test Supabase connection - write
