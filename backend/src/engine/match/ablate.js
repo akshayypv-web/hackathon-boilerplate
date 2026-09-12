@@ -1,23 +1,36 @@
 /**
  * Ablation harness — the single highest-ROI differentiator we have.
  *
- * Runs the ranker three times: alpha=1 (lexical-only), alpha=0 (semantic-only),
- * alpha=0.5 (hybrid). Returns a table showing each candidate's rank in all
- * three modes and the delta.
+ * FOUR modes now, so every layer of the stack has to visibly earn its keep:
  *
- * This is what proves to judges that both signals genuinely matter — without
- * it, judges just have to take our word for it that hybrid > either alone.
+ *   literal        alpha=1.0  lexicalField='normalized'
+ *                             BM25 over the resume as the candidate wrote it.
+ *                             Zero alias expansion. Zero semantic. This is the
+ *                             baseline — vocabulary mismatch is fatal here.
  *
- * Priya Nair (cand_02 in the fixtures) is the built-in regression test:
- * lexical-only should bury her; hybrid should rescue her. If not, the engine
- * regressed.
+ *   lexical_only   alpha=1.0  lexicalField='expanded'
+ *                             BM25 with alias expansion. Now "Express" on the
+ *                             resume matches the "Node.js" requirement. This
+ *                             row proves the skill graph earns its place.
+ *
+ *   semantic_only  alpha=0.0
+ *                             Pure cosine over sentence embeddings. This row
+ *                             proves the embedding layer earns its place.
+ *
+ *   hybrid         alpha=0.5
+ *                             The full stack. Wins where either alone loses.
+ *
+ * Priya Sharma (real cand_01) is the canonical top-of-pool; Kabir Nair is
+ * the semantic-rescue proof. If Kabir drops materially in literal or
+ * lexical_only but climbs back in hybrid, the story is intact.
  */
 
 const { runPipeline } = require('./score');
 
 async function runAblation(jd, candidates) {
-  const [lexical, semantic, hybrid] = await Promise.all([
-    runPipeline(jd, candidates, { alpha: 1.0, mode: 'lexical_only' }),
+  const [literal, lexical, semantic, hybrid] = await Promise.all([
+    runPipeline(jd, candidates, { alpha: 1.0, mode: 'lexical_only', lexicalField: 'normalized' }),
+    runPipeline(jd, candidates, { alpha: 1.0, mode: 'lexical_only', lexicalField: 'expanded' }),
     runPipeline(jd, candidates, { alpha: 0.0, mode: 'semantic_only' }),
     runPipeline(jd, candidates, { alpha: 0.5, mode: 'hybrid' }),
   ]);
@@ -27,6 +40,7 @@ async function runAblation(jd, candidates) {
     for (const c of results) m.set(c.candidateId, c.rank);
     return m;
   };
+  const lit = rankBy(literal);
   const lex = rankBy(lexical);
   const sem = rankBy(semantic);
   const hyb = rankBy(hybrid);
@@ -35,31 +49,32 @@ async function runAblation(jd, candidates) {
     .map(c => ({
       candidateId: c.id,
       name: c.name,
+      literalRank: lit.get(c.id),
       lexicalRank: lex.get(c.id),
       semanticRank: sem.get(c.id),
       hybridRank: hyb.get(c.id),
     }))
     .map(r => ({
       ...r,
-      // Positive delta = hybrid ranked candidate BETTER than the extremes' worst.
-      // A lexically invisible candidate (like Priya) will show a big improvement
-      // between lexicalRank and hybridRank — that's the proof point.
-      lexToHybridDelta: r.lexicalRank - r.hybridRank,
-      semToHybridDelta: r.semanticRank - r.hybridRank,
+      litToHybridDelta: r.literalRank - r.hybridRank,   // how much aliases + semantic together saved
+      lexToHybridDelta: r.lexicalRank - r.hybridRank,   // how much semantic alone added on top of aliases
+      semToHybridDelta: r.semanticRank - r.hybridRank,  // how much lexical added on top of semantic
     }))
     .sort((a, b) => a.hybridRank - b.hybridRank);
 
-  return { rows, lexical, semantic, hybrid };
+  return { rows, literal, lexical, semantic, hybrid };
 }
 
 /** Print a simple console table for the CLI. */
 function printAblation({ rows }) {
-  const w = { name: 20, num: 6, delta: 8 };
+  const w = { name: 20, num: 5, delta: 8 };
   const header = [
     'name'.padEnd(w.name),
+    'lit'.padStart(w.num),
     'lex'.padStart(w.num),
     'sem'.padStart(w.num),
     'hyb'.padStart(w.num),
+    'lit→hyb'.padStart(w.delta),
     'lex→hyb'.padStart(w.delta),
     'sem→hyb'.padStart(w.delta),
   ].join(' | ');
@@ -69,9 +84,11 @@ function printAblation({ rows }) {
   for (const r of rows) {
     console.log([
       String(r.name).slice(0, w.name).padEnd(w.name),
+      String(r.literalRank).padStart(w.num),
       String(r.lexicalRank).padStart(w.num),
       String(r.semanticRank).padStart(w.num),
       String(r.hybridRank).padStart(w.num),
+      String(r.litToHybridDelta).padStart(w.delta),
       String(r.lexToHybridDelta).padStart(w.delta),
       String(r.semToHybridDelta).padStart(w.delta),
     ].join(' | '));

@@ -166,6 +166,17 @@ function _extractOverrides(body) {
   return out;
 }
 
+// Lexical field is a string, not a number — kept separate from the numeric
+// tunables. 'expanded' (default) uses Akshay's alias-inflated text so the
+// query matches "Node.js" through resume-side "Express". 'normalized' gives
+// the literal-keyword ablation row.
+function _extractLexicalField(body) {
+  if (body && (body.lexicalField === 'normalized' || body.lexicalField === 'expanded')) {
+    return body.lexicalField;
+  }
+  return undefined;
+}
+
 router.post('/rank', async (req, res) => {
   try {
     const modeParam = (req.query.mode || req.body?.mode || 'hybrid').toString();
@@ -176,10 +187,11 @@ router.post('/rank', async (req, res) => {
 
     const jd = _resolveJd(req.body);
     const overrides = _extractOverrides(req.body);
-    const isTuned = Object.keys(overrides).length > 0;
+    const lexicalField = _extractLexicalField(req.body);
+    const isTuned = Object.keys(overrides).length > 0 || lexicalField != null;
     const traceOn = String(req.query.trace || req.body?.trace || '') === '1' || req.body?.trace === true;
 
-    const key = `${_jdKey(jd)}:${modeParam}${traceOn ? ':trace' : ''}`;
+    const key = `${_jdKey(jd)}:${modeParam}${lexicalField ? `:${lexicalField}` : ''}${traceOn ? ':trace' : ''}`;
     if (!isTuned && _rankCache.has(key)) {
       return res.json(_rankCache.get(key));
     }
@@ -191,6 +203,7 @@ router.post('/rank', async (req, res) => {
       trace: traceOn,
       ...overrides,
     };
+    if (lexicalField) runOpts.lexicalField = lexicalField;
     const ranked = await runPipeline(jd, candidates, runOpts);
     const result = _shapeResult(jd, ranked, modeParam);
     if (isTuned) result.meta.tuned = overrides;
@@ -248,23 +261,26 @@ router.get('/ablation', async (req, res) => {
     }
 
     const candidates = await _getCandidates();
-    const { rows, lexical, semantic, hybrid } = await runAblation(jd, candidates);
+    const { rows, literal, lexical, semantic, hybrid } = await runAblation(jd, candidates);
 
     const payload = {
       candidates: rows.map(r => ({
         candidateId: r.candidateId,
         name: r.name,
+        literalRank: r.literalRank,
         lexicalRank: r.lexicalRank,
         semanticRank: r.semanticRank,
         hybridRank: r.hybridRank,
-        delta: r.lexToHybridDelta, // main highlight column for the UI
+        delta: r.litToHybridDelta,
+        litToHybridDelta: r.litToHybridDelta,
         lexToHybridDelta: r.lexToHybridDelta,
         semToHybridDelta: r.semToHybridDelta,
       })),
       scores: {
-        lexical: lexical.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+        literal:  literal.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+        lexical:  lexical.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
         semantic: semantic.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
-        hybrid: hybrid.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+        hybrid:   hybrid.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
       },
       meta: { poolSize: candidates.length, generatedAt: new Date().toISOString() },
     };

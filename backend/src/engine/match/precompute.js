@@ -31,7 +31,7 @@ function jdKey(x) {
   console.log(`Parsed ${candidates.length} candidates. Running ablation ...`);
 
   const t0 = Date.now();
-  const { rows, lexical, semantic, hybrid } = await runAblation(jd, candidates);
+  const { rows, literal, lexical, semantic, hybrid } = await runAblation(jd, candidates);
   const dt = Date.now() - t0;
 
   const payload = {
@@ -41,17 +41,20 @@ function jdKey(x) {
     candidates: rows.map(r => ({
       candidateId: r.candidateId,
       name: r.name,
+      literalRank: r.literalRank,
       lexicalRank: r.lexicalRank,
       semanticRank: r.semanticRank,
       hybridRank: r.hybridRank,
-      delta: r.lexToHybridDelta,
+      delta: r.litToHybridDelta,
+      litToHybridDelta: r.litToHybridDelta,
       lexToHybridDelta: r.lexToHybridDelta,
       semToHybridDelta: r.semToHybridDelta,
     })),
     scores: {
-      lexical: lexical.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+      literal:  literal.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+      lexical:  lexical.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
       semantic: semantic.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
-      hybrid: hybrid.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
+      hybrid:   hybrid.map(c => ({ candidateId: c.candidateId, rank: c.rank, finalScore: c.finalScore })),
     },
     meta: { poolSize: candidates.length },
   };

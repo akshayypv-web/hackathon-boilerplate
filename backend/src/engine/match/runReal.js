@@ -39,8 +39,8 @@ function stats(scores) {
   console.log(`Parsed ${candidates.length} candidates in ${Date.now() - t0} ms\n`);
 
   const t1 = Date.now();
-  const { rows, hybrid, lexical, semantic } = await runAblation(jd, candidates);
-  console.log(`Ran 3 modes in ${Date.now() - t1} ms\n`);
+  const { rows, hybrid, lexical, semantic, literal } = await runAblation(jd, candidates);
+  console.log(`Ran 4 modes in ${Date.now() - t1} ms\n`);
 
   printAblation({ rows });
   console.log();
@@ -55,7 +55,7 @@ function stats(scores) {
   console.log();
 
   console.log('Score spread by mode:');
-  for (const [label, results] of [['lexical', lexical], ['semantic', semantic], ['hybrid', hybrid]]) {
+  for (const [label, results] of [['literal', literal], ['lexical', lexical], ['semantic', semantic], ['hybrid', hybrid]]) {
     const s = stats(results.map(c => c.finalScore));
     console.log(
       `  ${label.padEnd(10)} min=${s.min} p25=${s.p25} med=${s.median} p75=${s.p75} max=${s.max}  mean=${s.mean}  sd=${s.stddev}`,
