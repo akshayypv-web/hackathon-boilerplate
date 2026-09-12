@@ -219,9 +219,25 @@ const NEGATION_VERB = new RegExp(
 /** "but have never ...", "although I have not ..." — a clause-level reversal. */
 const NEGATION_CLAUSE = /\b(but|though|although|however)\s+(i\s+)?(have\s+|has\s+|had\s+)?(never|not|no)\b/i;
 
+/**
+ * Hedged capability: "limited hands-on React experience", "minimal exposure to
+ * Docker", "basic familiarity with SQL".
+ *
+ * This is a candidate telling you they are weak at something. Quoting it as
+ * evidence that they HAVE the skill — which is what was happening — inverts the
+ * meaning. Treated as negated so it never becomes a supporting citation.
+ */
+const NEGATION_HEDGE = new RegExp(
+  '\\b(limited|minimal|little|only\\s+basic|basic|some|no\\s+real)\\s+' +
+  '(hands[- ]on\\s+|practical\\s+|professional\\s+|formal\\s+|direct\\s+)?' +
+  '(experience|exposure|knowledge|familiarity|understanding|background)\\b',
+  'i'
+);
+
 function isNegated(text) {
   const t = text.trim();
-  return NEGATION_START.test(t) || NEGATION_ANYWHERE.test(t) || NEGATION_VERB.test(t) || NEGATION_CLAUSE.test(t);
+  return NEGATION_START.test(t) || NEGATION_ANYWHERE.test(t) || NEGATION_VERB.test(t)
+    || NEGATION_CLAUSE.test(t) || NEGATION_HEDGE.test(t);
 }
 
 /** One line -> one or more claim strings, depending on section. */
@@ -287,13 +303,27 @@ function identityLocation(line, name) {
   return null;
 }
 
+/**
+ * Contact details appearing ANYWHERE in a line, not just as a "Label:" prefix.
+ *
+ * Resume header lines look like:
+ *   "Karthik Iyer karthik.iyer.dev@gmail.com | +91 98xxxxxx03 | github.com/kiyer | Chennai"
+ *
+ * That line was being cited as EVIDENCE OF GIT EXPERIENCE, because it contains
+ * "github.com". A profile URL is not proof you have used version control, and
+ * quoting it in an explanation looks careless to anyone reading closely.
+ */
+const EMAIL_ANYWHERE = /[\w.+-]+@[\w.-]+\.\w{2,}/;
+const PROFILE_URL = /\b(?:github|gitlab|linkedin|leetcode|behance|dribbble)\.com\/[\w.-]+/i;
+
 function isNoise(text, section) {
   if (!text) return true;
   if (DATE_ONLY.test(text)) return true;
   if (!/[a-z]/i.test(text)) return true;              // no letters at all
   if (text.length < (MIN_LEN[section] ?? 12)) return true;
   if (CONTACT_LINE.test(text)) return true;
-  if (/^[\w.+-]+@[\w.-]+$/.test(text)) return true;   // bare email
+  if (EMAIL_ANYWHERE.test(text)) return true;         // header line with an email
+  if (PROFILE_URL.test(text) && /[|·•]|\+?\d{6,}/.test(text)) return true; // contact header
   if (/^(\+?\d[\d\s()-]{7,})$/.test(text)) return true; // bare phone
   if (/^https?:\/\//i.test(text)) return true;        // bare url
   return false;

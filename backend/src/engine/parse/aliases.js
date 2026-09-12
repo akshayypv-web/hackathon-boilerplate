@@ -160,10 +160,16 @@ function expandAliases(text) {
   if (!base) return '';
 
   const padded = ` ${base} `;
+  // Slash-joined skills are extremely common on resumes and in JDs —
+  // "HTML/CSS", "AWS/GCP/Azure", "agile/scrum", "Git/GitHub". Matching only on
+  // space-delimited terms makes every one of them invisible. We test both forms:
+  // `padded` so aliases that legitimately contain a slash still match ("ci/cd"),
+  // and `slashed` so the components of a slash list are each findable.
+  const slashed = padded.replace(/\//g, ' ');
   const found = new Set();
 
   for (const alias of SORTED_ALIASES) {
-    if (padded.includes(` ${alias} `)) {
+    if (padded.includes(` ${alias} `) || slashed.includes(` ${alias} `)) {
       for (const canonical of REVERSE.get(alias)) {
         if (!padded.includes(` ${canonical} `)) found.add(canonical);
       }
@@ -185,9 +191,10 @@ function expandAliases(text) {
 /** Canonical skills mentioned in a blob of text. Used for Candidate.skillsDeclared. */
 function detectSkills(text) {
   const padded = ` ${normalize(text)} `;
+  const slashed = padded.replace(/\//g, ' '); // see expandAliases: "HTML/CSS"
   const found = new Set();
   for (const alias of SORTED_ALIASES) {
-    if (padded.includes(` ${alias} `)) {
+    if (padded.includes(` ${alias} `) || slashed.includes(` ${alias} `)) {
       REVERSE.get(alias).forEach((c) => found.add(c));
     }
   }

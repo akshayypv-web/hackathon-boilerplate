@@ -89,21 +89,31 @@ export default function Home() {
 
   return (
     <main className="min-h-full bg-background text-foreground">
-      <section className="relative h-[62vh] min-h-[420px] max-h-[720px] w-full overflow-hidden border-b border-border">
-        <ImageStreamHero images={RESUME_MOCKUPS} cards={9} speed={18} className="h-full w-full">
-          <div className="relative z-10 flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-            <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_55%_50%_at_50%_45%,rgba(10,10,10,0.6),transparent_70%)]" />
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent-soft px-3 py-1 font-sans text-xs font-semibold uppercase tracking-widest text-accent">
-              <Sparkles className="h-3.5 w-3.5" /> Smart shortlisting
-            </span>
-            <h1 className="font-display text-6xl font-semibold tracking-tight text-foreground [text-shadow:0_4px_28px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
-              LINKED OUT
-            </h1>
-            <p className="max-w-xl font-sans text-base text-muted [text-shadow:0_2px_16px_rgba(0,0,0,0.7)] sm:text-lg">
-              Ranks eighteen resumes against one job description and shows exactly which line earned every point.
-            </p>
-          </div>
-        </ImageStreamHero>
+      {/* Hero is stacked, not overlaid: title above the corridor, description
+          below it. Text sitting on top of the moving resume cards was unreadable
+          — the cards are light and in constant motion, so no amount of shadow
+          fixes the contrast. Separating the layers keeps the animation clean and
+          the copy legible. */}
+      <section className="w-full border-b border-border">
+        <div className="flex flex-col items-center gap-3 px-6 pb-6 pt-12 text-center">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent-soft px-3 py-1 font-sans text-xs font-semibold uppercase tracking-widest text-accent">
+            <Sparkles className="h-3.5 w-3.5" /> Smart shortlisting
+          </span>
+          <h1 className="font-display text-6xl font-semibold tracking-tight text-foreground sm:text-7xl lg:text-8xl">
+            LINKED OUT
+          </h1>
+        </div>
+
+        <div className="relative h-[42vh] min-h-[280px] max-h-[460px] w-full overflow-hidden">
+          <ImageStreamHero images={RESUME_MOCKUPS} cards={9} speed={18} className="h-full w-full" />
+        </div>
+
+        <div className="flex flex-col items-center px-6 pb-12 pt-6 text-center">
+          <p className="max-w-2xl font-sans text-base text-muted sm:text-lg">
+            Ranks eighteen resumes against one job description and shows exactly which line
+            earned every point.
+          </p>
+        </div>
       </section>
 
       <div className="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-8 sm:px-6 lg:px-10">
@@ -328,13 +338,13 @@ export default function Home() {
             </div>
           )}
 
-          <div>
-            <h3 className="mb-3 flex items-center gap-2 font-display text-xl font-semibold">
-              <Flag className="h-4 w-4 text-gold" /> JD bias flags
-            </h3>
-            {result.biasFlags.length === 0 ? (
-              <p className="font-sans text-sm text-muted">No bias flags detected.</p>
-            ) : (
+          {/* Skip the panel entirely when the JD is clean. An empty "none found"
+              box takes up space and reads like a feature that failed to load. */}
+          {result.biasFlags.length > 0 && (
+            <div>
+              <h3 className="mb-3 flex items-center gap-2 font-display text-xl font-semibold">
+                <Flag className="h-4 w-4 text-gold" /> JD bias flags
+              </h3>
               <ul className="flex flex-col gap-2">
                 {result.biasFlags.map((b, i) => (
                   <li key={i} className="rounded-xl border border-gold/30 bg-gold-bg p-3">
@@ -347,8 +357,8 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
+            </div>
+          )}
         </section>
 
         <section className="rounded-2xl border border-border bg-surface p-5">
