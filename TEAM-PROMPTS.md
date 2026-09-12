@@ -427,12 +427,11 @@ backend/src/engine/explain/chat.js  (BONUS 2 FROM THE PROBLEM DOC — recruiter 
 
   HARD rules for this file, mirroring the team boundary:
     - Every claim must cite a real evidenceText — never invent, never paraphrase away the quote.
-    - No LLM number ever influences ranking. If you use an LLM to prettify the final sentence,
-      it receives only the retrieved facts (candidate names, quotes, scores) and returns prose,
-      never a number. Deterministic template output must work end-to-end before the LLM pass
-      is added.
-    - Do not send raw resume text to an LLM — retrieved evidenceText snippets are OK because
-      they are already parsed, structured units.
+    - NO EXTERNAL API CALL OF ANY KIND. Answers are assembled from deterministic templates over
+      facts already computed by the pipeline. Retrieval reuses the local embed.js model; nothing
+      in this file may reach the network.
+    - No LLM number ever influences ranking — a consequence of the rule above, restated because
+      it is the one a judge will probe.
 
 TEST DATA: backend/src/engine/fixtures/jd.fixture.json and candidates.fixture.json.
 Build Part 1 and Part 2 fully before touching Part 3.

@@ -8,6 +8,10 @@ node backend/src/engine/eval/validateRoles.js     # 220 labelled resumes
 node backend/src/engine/eval/tune.js              # the parameter sweeps
 ```
 
+> The alpha and gate sweep tables below were measured before identity lines were removed
+> from scored evidence. Re-run `eval/tune.js` before quoting them; the validation figures
+> further down have been re-measured and are current.
+
 ---
 
 ## The 90-second whiteboard script
@@ -114,9 +118,21 @@ keyword search alone demonstrably misses people.
 The organisers' 220 training resumes have their target role in the filename, so we have
 labels. Against a Junior Full Stack JD:
 
-- RELEVANT (n=59): mean rank **33.1**, **53 of 59** in the top quartile
-- IRRELEVANT (n=94): mean rank **166.0**, **0 of 94** in the top quartile
-- precision@top25% **96%**, purity@bottom25% **93%**
+- RELEVANT (n=59): mean rank **33.5**, **53 of 59** in the top quartile
+- IRRELEVANT (n=94): mean rank **162.7**, **0 of 94** in the top quartile
+- precision@top25% **96%**, purity@bottom25% **89%**
+
+*(Purity was 93% until we stopped scoring identity lines — name, email, phone and handle
+were evidence units, so a contact line could satisfy a requirement and be quoted as the
+proof. Dropping them moved two of 94 irrelevant resumes out of the bottom quartile.
+Precision and the relevant top-quartile count did not move. We took the four points.)*
+
+**"Your validator reports a misplacement at rank 173."**
+
+It does, and that one is the label being wrong rather than the ranking. `Python_Dev_B.docx`
+is labelled RELEVANT by filename, but the resume says *"basic exposure to Python
+(self-taught)"* and lists data entry in Excel as its only experience. Ranking it 173rd is
+correct. Filenames are ground truth for the target role, not for candidate strength.
 
 **"What if two candidates tie?"**
 

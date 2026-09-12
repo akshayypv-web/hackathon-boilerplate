@@ -70,7 +70,10 @@ frontend/
 data/
   resumes/                    18 synthetic resumes — what /api/rank serves today
   dummy_resumes/              220 role-labelled resumes — the eval/ ground truth set
-  testing_dataset/            official test set: Sample_JD.pdf + 18 resumes
+  testing_dataset/
+    Sample_JD.pdf             the JD for the test set — kept OUT of resumes/ so a
+                              directory scan cannot rank it as a candidate
+    resumes/                  official test set: 18 resumes
 ```
 
 ### The three datasets
@@ -81,7 +84,7 @@ They are deliberately separate and not interchangeable:
 |---|---|---|
 | `data/resumes/` | 18 synthetic PDFs | the live demo pool — `/api/rank` reads this |
 | `data/dummy_resumes/` | 220 resumes, target role encoded in each filename | ground-truth validation and parameter sweeps |
-| `data/testing_dataset/` | `Sample_JD.pdf` + 18 resumes | the official evaluation set |
+| `data/testing_dataset/` | `Sample_JD.pdf` + `resumes/` (18) | the official evaluation set |
 
 `data/dummy_resumes/` filenames encode the target role (`SDE_Resume_1`,
 `Sales_Resume_2`, `HR_A`), which is what turns "our ranking looks sensible" into a
@@ -132,6 +135,7 @@ NEXT_PUBLIC_API_URL=http://localhost:5000
 | GET | `/api/jds` | Lists the 5 JD templates. |
 | GET | `/api/jds/:id` | One JD template. Pass its `id` to `/api/rank` as `jdId` to re-rank the same pool against a different role. |
 | GET | `/api/health` | Pool size, whether resumes loaded, which modes are cached. |
+| POST | `/api/chat` | Recruiter chat (bonus 2). Body: `{ question, pipelineResult }`. Routes "why is X above Y" to a requirement-matrix diff, "who knows X" to a lexically-corroborated embedding search, anything else to open retrieval. Returns `{ text, citedCandidates, quotes }`, every claim quoting a real resume line. |
 | POST | `/api/reset-cache` | Clears in-memory result caches. Never touches the embedding cache. |
 | GET | `/api/hello`, POST `/api/echo` | Boilerplate leftovers. |
 | GET/POST | `/api/test-db` | Supabase connectivity check. Returns 503 if no `.env`. |
@@ -162,8 +166,18 @@ node backend/src/engine/parse/loadCandidates.js ./data/resumes --show cand_03
 ```
 
 Headline validation result, against a Junior Full Stack JD over the 220 labelled
-resumes: RELEVANT (n=59) mean rank **33.1**; IRRELEVANT (n=94) mean rank **166.0**;
-precision@top25% **96%**, purity@bottom25% **93%**.
+resumes: RELEVANT (n=59) mean rank **33.5**, 53 of 59 in the top quartile;
+IRRELEVANT (n=94) mean rank **162.7**, none in the top quartile;
+precision@top25% **96%**, purity@bottom25% **89%**.
+
+Purity was 93% before identity lines were dropped from scored evidence; removing them
+moved two of 94 irrelevant resumes out of the bottom quartile. Precision and the
+relevant-candidate top-quartile count were unchanged.
+
+The one resume the validator reports as misplaced — `Python_Dev_B.docx` at rank 173 —
+is the engine being right and the label being wrong: that resume reads *"basic exposure
+to Python, self-taught"* with data entry as its only experience. Filename labels are
+ground truth for the role, not for candidate strength.
 
 ---
 
@@ -183,19 +197,33 @@ each with the sweep that justifies it in a comment:
 
 ---
 
+## Ranking a different resume set
+
+`/api/rank` reads `data/resumes/` by default. Point it anywhere with an env var:
+
+```bash
+RESUMES_DIR=./data/testing_dataset/resumes npm run dev
+```
+
+The CLI tools take the directory as an argument instead.
+
 ## Known gaps
 
-- **`/api/rank` is pinned to `data/resumes/`.** `RESUMES_DIR` in
-  [backend/src/routes/rank.js:38](backend/src/routes/rank.js#L38) is a constant. To rank
-  `data/testing_dataset/` through the API, change it there; the CLI tools already take a
-  directory argument.
-- **`/api/chat` is called by the frontend but not implemented on the backend.** The chat
-  panel in [frontend/src/app/page.js](frontend/src/app/page.js) will error until it ships.
-- **`data/testing_dataset/Sample_JD.pdf` is not parsed at runtime.** The TechNova JD it
-  contains was hand-decomposed into `engine/fixtures/jd.fixture.json`; `jd/decompose.js`
-  accepts raw JD *text*, not a PDF.
-- **`biasFlags` is always `[]`** in the `/api/rank` response — the field is wired through
-  but nothing populates it.
+- **`Sample_JD.pdf` is not parsed automatically at startup.** `POST /api/rank` accepts raw
+  JD *text* (which `decompose()` then parses), but nothing extracts the PDF for you — see
+  the `extractAny` + `decompose` pairing in the commands above.
+- **Node.js and Express decompose into two separate MUSTs.** They resolve to the same alias
+  family, so a candidate lacking Node takes two gate penalties instead of one. Splitting on
+  "and" is deliberate — it preserves the ability to report *which* skill is missing — and
+  the alternative (subset matching) wrongly merged "JavaScript and a frontend framework"
+  into one requirement.
+- **Institution names are scored.** An education unit reads
+  `"B.E. Computer Science, RV College of Engineering, Bengaluru (2023-2027)"`, so the
+  college contributes signal. The degree and field are what the requirement aliases target,
+  but the institution is in the same unit and was left in rather than risk damaging the
+  education match.
+- **The sweep tables in PITCH.md predate the identity-line change** below and should be
+  re-run with `eval/tune.js` before being quoted.
 
 ---
 

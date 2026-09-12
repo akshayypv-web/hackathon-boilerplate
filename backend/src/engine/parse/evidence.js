@@ -260,6 +260,33 @@ function splitIntoClaims(line, section) {
 /** Contact lines are never matchable signal, only index noise. */
 const CONTACT_LINE = /^(phone|tel|telephone|mobile|mail|e-?mail|location|address|linked\s?in|github|gitlab|portfolio|website|dob|date of birth)\s*[:\-–]/i;
 
+/**
+ * The composite identity banner: "Aditi Sharma a@b.com | +91 98… | github.com/x | Bengaluru".
+ * CONTACT_LINE only catches the labelled form ("Email: …"), so this one was
+ * passing through as scorable evidence on every single resume.
+ */
+const CONTACT_MARKER = /@|https?:\/\/|(?:github|linkedin|gitlab)\.com|\+?\d[\d\s()-]{8,}/i;
+
+/**
+ * A name, email or handle is not a claim about capability, but scored as one it
+ * can satisfy a requirement and then be quoted as the evidence for it. Keep only
+ * the place — a location requirement may legitimately match that — and discard
+ * the rest of the banner.
+ */
+function identityLocation(line, name) {
+  const nameNorm = normalize(name || '');
+  for (const seg of line.split(/\s*[|·•]\s*/)) {
+    const s = seg.trim().replace(/[,;]+$/, '');
+    if (!s || CONTACT_MARKER.test(s)) continue;
+    const n = normalize(s);
+    if (!n) continue;
+    if (nameNorm && (n === nameNorm || nameNorm.includes(n) || n.includes(nameNorm))) continue;
+    if (s.split(/\s+/).length > 4 || !/^[A-Z]/.test(s)) continue;
+    return s;
+  }
+  return null;
+}
+
 function isNoise(text, section) {
   if (!text) return true;
   if (DATE_ONLY.test(text)) return true;
@@ -301,6 +328,7 @@ function toEvidenceUnits(rawText, candidateId) {
 
   const lines = mergeWrappedLines(String(rawText).split('\n'));
   const units = [];
+  const candidateName = extractName(rawText, '');
   let section = 'other';
   let index = 0;
 
@@ -317,6 +345,25 @@ function toEvidenceUnits(rawText, candidateId) {
     // Skip the very first line, which is the candidate's name.
     if (i > 0 && looksLikeHeader(line)) {
       section = inferSectionFromFollowing(lines, i);
+      continue;
+    }
+
+    // Identity banner in the header region: emit the place, drop everything else.
+    if (section === 'other' && i < 6 && CONTACT_MARKER.test(line)) {
+      const place = identityLocation(line, candidateName);
+      if (place) {
+        const text = `Based in ${place}`;
+        index += 1;
+        units.push({
+          id: `${candidateId}::ev_${String(index).padStart(3, '0')}`,
+          candidateId,
+          text,
+          normalized: normalize(text),
+          expanded: expandAliases(text),
+          section: 'other',
+          negated: false,
+        });
+      }
       continue;
     }
 

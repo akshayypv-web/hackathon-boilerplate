@@ -35,7 +35,9 @@ SKILL_TERMS.sort((a, b) => b.length - a.length);
 
 /** Canonical terms present in a phrase, plus their alias sets. */
 function skillsIn(phrase) {
-  const hay = ` ${normalize(phrase)} `;
+  // Slashes and parens separate terms as surely as spaces do: without this
+  // "Agile/Scrum" and "AWS/GCP/Azure" are single unmatchable tokens.
+  const hay = ` ${normalize(String(phrase || '').replace(/[/()]/g, ' '))} `;
   const found = new Set();
   for (const [canonical, aliases] of Object.entries(ALIASES)) {
     if (hay.includes(` ${canonical} `)) { found.add(canonical); continue; }
@@ -59,22 +61,53 @@ function aliasesFor(canonicals) {
  * "Experience with React and Node.js" -> ["Experience with React", "Node.js"]
  * but "Experience with React and a willingness to learn" stays whole, because
  * only one side names a skill. Splitting on every conjunction shreds prose.
+ *
+ * CONJUNCTIVE vs DISJUNCTIVE is the distinction that matters. "and" and "," add
+ * requirements; "or" and "/" offer alternatives, and splitting those turns a
+ * choice into a set of mandates. "SQL or NoSQL (MySQL, PostgreSQL, MongoDB)"
+ * split five ways meant a candidate who knew Postgres failed three must-haves
+ * and took a 44% gate penalty for meeting the requirement exactly as written.
  */
+const DISJUNCTIVE = /\bor\b|\//i;
+
 function atomise(line) {
-  const parts = line
-    .split(/\s*(?:,|;|\band\b|\bor\b|\/)\s*/i)
+  // Parenthesised text holds examples or alternatives. Mask it so its commas and
+  // slashes cannot drive the split, then restore it — kept in the requirement so
+  // skillsIn() still picks the terms up as aliases.
+  const parens = [];
+  const masked = line.replace(/\(([^)]*)\)/g, (_, body) => {
+    parens.push(body);
+    return `${parens.length - 1}`;
+  });
+  const restore = (s) => s.replace(/(\d+)/g, (_, i) => `(${parens[i]})`).replace(/\s{2,}/g, ' ').trim();
+
+  if (DISJUNCTIVE.test(masked)) return [restore(masked)];
+
+  const parts = masked
+    .split(/\s*(?:,|;|\band\b)\s*/i)
     .map((p) => p.trim())
     .filter(Boolean);
 
-  if (parts.length < 2) return [line];
+  if (parts.length < 2) return [restore(masked)];
 
   // Only split where at least two fragments independently name a skill.
-  const skillful = parts.filter((p) => skillsIn(p).length > 0);
-  if (skillful.length < 2) return [line];
+  const skillful = parts.filter((p) => skillsIn(restore(p)).length > 0);
+  if (skillful.length < 2) return [restore(masked)];
+
+  // ...and where the fragments resolve to different skills, so "Node.js and
+  // Express" stays one ask rather than gating twice.
+  //
+  // Exact-set, not subset: the "js" alias means "React.js" and "Node.js" both
+  // also match javascript, and subset logic then collapsed "JavaScript and a
+  // frontend framework" into a single requirement — which destroys the ability
+  // to report WHICH skill a candidate is missing. Erring toward splitting keeps
+  // that deliverable intact.
+  const distinct = new Set(skillful.map((p) => skillsIn(restore(p)).sort().join('|')));
+  if (distinct.size < 2) return [restore(masked)];
 
   // Re-attach the leading verb phrase to the first fragment only; later
   // fragments stand alone ("Node.js"), which is what we want to match against.
-  return parts.filter((p) => p.length > 1);
+  return parts.filter((p) => p.length > 1).map(restore);
 }
 
 function categoryOf(text) {
@@ -84,7 +117,7 @@ function categoryOf(text) {
   return 'skill';
 }
 
-const WEIGHTS = { skill: 1.0, experience: 0.8, education: 0.6, soft: 0.3 };
+const WEIGHTS = { skill: 1.0, experience: 0.8, education: 0.6, location: 0.8, soft: 0.3 };
 
 /** Core stack terms get a bump — they are what the role actually is. */
 const CORE = new Set(['node.js', 'react', 'javascript', 'python', 'java']);
@@ -97,6 +130,38 @@ function weightFor(category, canonicals, kind) {
 }
 
 const ROLE_NOUN = /\b(Developer|Engineer|Intern|Designer|Analyst|Scientist|Manager|Architect|Consultant)\b/;
+const WORK_MODE = /\b(hybrid|remote|on-?site|onsite|in-?office|wfh)\b/i;
+
+/**
+ * Location from the banner line: "Junior Full Stack Dev | Bengaluru (Hybrid) | 6 months".
+ *
+ * A hybrid or on-site role genuinely requires presence, so this stays a MUST.
+ * But it has to be its OWN requirement: left as part of the banner line it also
+ * matched on the role title and the contract length, and every candidate was
+ * scored against "Intern" and "6-Month" as though those were skills.
+ *
+ * Keyed off the work-mode word rather than a list of cities, so it travels to
+ * any JD.
+ */
+function extractLocation(lines) {
+  for (const line of lines.slice(0, 6)) {
+    for (const seg of line.split(/\s*[|·•]\s*/)) {
+      const s = seg.trim();
+      if (!s || !WORK_MODE.test(s)) continue;
+      const mode = (s.match(WORK_MODE) || [])[0] || '';
+      const place = s
+        .replace(/\(([^)]*)\)/g, ' ')
+        .replace(WORK_MODE, ' ')
+        .replace(/[,\-–]/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      if (place && /^[A-Z]/.test(place) && place.split(/\s+/).length <= 4) {
+        return { place, mode };
+      }
+    }
+  }
+  return null;
+}
 const TITLE_WORD = /^[A-Z][A-Za-z+/.]*$/;
 const NOT_TITLE = new Set(['A', 'An', 'The', 'For', 'Our', 'We', 'Is', 'At', 'To', 'And', 'Or', 'Join']);
 
@@ -145,9 +210,14 @@ function decompose(rawText) {
   const seen = new Set();
   const requirements = [];
 
-  for (const line of lines) {
+  for (let idx = 0; idx < lines.length; idx += 1) {
+    const line = lines[idx];
     const bare = line.replace(BULLET, '').trim();
     if (!bare) continue;
+
+    // Banner line — "title | location | duration". Metadata, not an ask. Its
+    // location half is emitted as a proper requirement after this loop.
+    if (idx < 3 && bare.includes('|') && (WORK_MODE.test(bare) || ROLE_NOUN.test(bare))) continue;
 
     // Heading lines switch mode and are not themselves requirements.
     const isHeadingish = bare.length < 60 && !/[.!]$/.test(bare);
@@ -188,6 +258,19 @@ function decompose(rawText) {
         weight: weightFor(category, canonicals, kind),
       });
     }
+  }
+
+  const loc = extractLocation(lines);
+  if (loc) {
+    const place = loc.place;
+    requirements.push({
+      id: `req_${String(requirements.length + 1).padStart(2, '0')}`,
+      text: `Based in or able to work from ${place}${loc.mode ? ` (${loc.mode})` : ''}`,
+      kind: 'MUST',
+      category: 'location',
+      aliases: [place.toLowerCase(), ...(loc.mode ? [loc.mode.toLowerCase()] : []), 'relocate', 'willing to relocate'],
+      weight: WEIGHTS.location,
+    });
   }
 
   return { title, company, rawText: String(rawText || ''), requirements };
