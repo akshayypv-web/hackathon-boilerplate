@@ -145,9 +145,17 @@ function explainOne(result, jd, candidate, poolSize) {
     };
   });
 
-  // Missing: unsatisfied MUSTs first (these are what a recruiter acts on),
-  // then unsatisfied NICEs.
-  const unsatisfied = scored.filter((x) => !x.rs.satisfied);
+  // Missing MUSTs come from result.missingMustHaves — the SAME list the ranked
+  // table badges and the gate penalty use.
+  //
+  // Deriving them here from `satisfied` instead produced two different answers on
+  // screen at once: `satisfied` uses satisfyThreshold (0.5) while the gate uses
+  // gateThreshold (0.45), so any requirement scoring between the two showed as
+  // "all met" in the table and "1 missing" in the panel. One number, one source.
+  const gateMissing = new Set(result.missingMustHaves || []);
+  const unsatisfied = scored.filter((x) =>
+    x.req.kind === 'MUST' ? gateMissing.has(x.rs.requirementId) : !x.rs.satisfied);
+
   const missing = [
     ...unsatisfied.filter((x) => x.req.kind === 'MUST'),
     ...unsatisfied.filter((x) => x.req.kind === 'NICE'),
@@ -161,8 +169,10 @@ function explainOne(result, jd, candidate, poolSize) {
     disclaimedBy: findDisclaimer(candidate, req),
   }));
 
+  // Same source as the badge and the gate, so the summary sentence cannot
+  // disagree with the list printed directly beneath it.
   const mustTotal = scored.filter((x) => x.req.kind === 'MUST').length;
-  const mustMet = scored.filter((x) => x.req.kind === 'MUST' && x.rs.satisfied).length;
+  const mustMet = mustTotal - gateMissing.size;
 
   return {
     summary: buildSummary(result, poolSize, scored.length, satisfied.length, mustMet, mustTotal, matched, missing),
