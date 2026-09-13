@@ -37,13 +37,17 @@ const { chat } = require('../engine/explain/chat');
 const { runAblation } = require('../engine/match/ablate');
 const cfg = require('../engine/match/config');
 
-// The organisers' evaluation set: 18 resumes + Sample_JD.pdf. Overridable so an
-// unseen set can be ranked without a code edit:
-//   RESUMES_DIR=./path/to/resumes npm run dev
+// The organisers' evaluation set: data/testing_dataset/resumes/ (18 resumes) with
+// Sample_JD.pdf one level up. Both overridable so an unseen set can be ranked
+// without a code edit:
+//   RESUMES_DIR=./path/to/resumes JD_PDF=./path/to/jd.pdf npm run dev
+const DATASET_DIR = path.join(__dirname, '..', '..', '..', 'data', 'testing_dataset');
 const RESUMES_DIR = process.env.RESUMES_DIR
   ? path.resolve(process.env.RESUMES_DIR)
-  : path.join(__dirname, '..', '..', '..', 'data', 'testing_dataset');
-const JD_PDF = path.join(RESUMES_DIR, 'Sample_JD.pdf');
+  : path.join(DATASET_DIR, 'resumes');
+const JD_PDF = process.env.JD_PDF
+  ? path.resolve(process.env.JD_PDF)
+  : path.join(DATASET_DIR, 'Sample_JD.pdf');
 const ABLATION_DISK_CACHE = path.join(__dirname, '..', 'engine', '.cache', 'ablation.json');
 const JD_TEMPLATES_DIR = path.join(__dirname, '..', 'engine', 'fixtures', 'jd_templates');
 
